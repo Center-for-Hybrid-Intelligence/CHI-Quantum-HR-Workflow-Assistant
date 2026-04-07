@@ -1,0 +1,44 @@
+# Local development — hot reload, no secrets needed
+# Usage: docker compose up
+#        docker compose exec app npm run db:push
+
+services:
+  app:
+    build:
+      context: .
+      target: deps        # Use the deps stage (has all node_modules)
+    volumes:
+      - .:/app            # Mount source for hot reload
+      - /app/node_modules # Keep container's node_modules (avoid Windows path issues)
+    environment:
+      NODE_ENV: development
+      PORT: "5000"
+      DATABASE_URL: postgres://app_user:devpassword@postgres:5432/app_db
+    env_file:
+      - path: .env
+        required: false   # Optional — add API keys here for dev
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run dev
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: app_db
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"       # Expose so you can connect with a local DB client
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_dev_data:

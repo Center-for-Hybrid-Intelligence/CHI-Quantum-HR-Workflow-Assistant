@@ -1,0 +1,58 @@
+# Production deployment on a VM
+# Usage:
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Before running, populate each file in ./secrets/ — see secrets/README.md
+
+services:
+  app:
+    build:
+      context: .
+      target: production
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+    secrets:
+      - database_url
+      - openai_api_key
+      - anthropic_api_key
+      - gemini_api_key
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: app_db
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+secrets:
+  database_url:
+    file: ./secrets/database_url.txt
+  openai_api_key:
+    file: ./secrets/openai_api_key.txt
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key.txt
+  gemini_api_key:
+    file: ./secrets/gemini_api_key.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+
+volumes:
+  postgres_prod_data:

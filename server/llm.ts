@@ -38,15 +38,11 @@ export async function streamChat(
 ): Promise<string> {
   const provider = getProvider(modelId);
 
-  if (provider === "openai") {
-    return streamOpenAI(modelId, messages, onChunk);
-  } else if (provider === "anthropic") {
+  if (provider === "anthropic") {
     return streamAnthropic(modelId, messages, onChunk);
-  } else if (provider === "gemini") {
-    return streamGemini(modelId, messages, onChunk);
   }
 
-  return streamOpenAI("gpt-5.2", messages, onChunk);
+  return streamAnthropic("claude-sonnet-4-6", messages, onChunk);
 }
 
 async function streamOpenAI(

@@ -30,12 +30,8 @@ export interface CanvasData {
 }
 
 export const MODEL_OPTIONS = [
-  { id: "gpt-5.2", label: "GPT-5.2", provider: "openai" },
-  { id: "gpt-4.1", label: "GPT-4.1", provider: "openai" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "anthropic" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "anthropic" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "gemini" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "gemini" },
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
@@ -45,7 +41,7 @@ export const workflows = pgTable("workflows", {
   title: text("title").notNull(),
   workflowName: text("workflow_name").notNull().default(""),
   companyUrl: text("company_url").default(""),
-  selectedModel: text("selected_model").notNull().default("gpt-5.2"),
+  selectedModel: text("selected_model").notNull().default("claude-sonnet-4-6"),
   currentStep: integer("current_step").notNull().default(1),
   canvasData: jsonb("canvas_data").$type<CanvasData>(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),

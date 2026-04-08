@@ -9,11 +9,10 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { MODEL_OPTIONS } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 type AvailableProviders = {
-    openai: boolean;
     anthropic: boolean;
-    gemini: boolean;
 };
 
 export function ModelSelector({
@@ -25,6 +24,7 @@ export function ModelSelector({
     currentModel: string;
     disabled: boolean;
 }) {
+    const { toast } = useToast();
     const { data: available } = useQuery<AvailableProviders>({
         queryKey: ["/api/available-providers"],
         staleTime: Infinity,
@@ -32,12 +32,25 @@ export function ModelSelector({
 
     const updateModel = useMutation({
         mutationFn: async (selectedModel: string) => {
+            if (available) {
+                const option = MODEL_OPTIONS.find((m) => m.id === selectedModel);
+                if (option && !available[option.provider as keyof AvailableProviders]) {
+                    throw new Error(`No API key configured for ${option.provider}.`);
+                }
+            }
             const res = await apiRequest("PATCH", `/api/workflows/${workflowId}/model`, { selectedModel });
             return res.json();
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/workflows", workflowId] });
             queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+        },
+        onError: (error: Error) => {
+            toast({
+                title: "Cannot switch model",
+                description: error.message,
+                variant: "destructive",
+            });
         },
     });
 

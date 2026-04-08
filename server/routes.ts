@@ -315,7 +315,7 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const modelId = workflow.selectedModel || "gpt-5.2";
+      const modelId = workflow.selectedModel || "claude-sonnet-4-6";
       const fullResponse = await streamChat(modelId, chatHistory, (delta) => {
         res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
       });
@@ -411,7 +411,7 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const modelId = workflow.selectedModel || "gpt-5.2";
+      const modelId = workflow.selectedModel || "claude-sonnet-4-6";
       const fullResponse = await streamChat(modelId, chatHistory, (delta) => {
         res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
       });
@@ -467,9 +467,7 @@ export async function registerRoutes(
 
   app.get("/api/available-providers", (req, res) => {
     res.json({
-      openai: !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
       anthropic: !!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-      gemini: !!process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
     });
   });
 

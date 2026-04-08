@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import type { Workflow, Message, CanvasData } from "@shared/schema";
 import { MODEL_OPTIONS } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 const STEP_PROMPTS: Record<number, string[]> = {
   1: [
@@ -111,6 +112,7 @@ function EmptyState({ stepName }: { stepName: string }) {
 }
 
 export default function Home() {
+  const { toast } = useToast();
   const [activeWorkflowId, setActiveWorkflowId] = useState<number | null>(null);
   const [viewingStep, setViewingStep] = useState<number>(1);
   const [inputValue, setInputValue] = useState("");
@@ -120,7 +122,7 @@ export default function Home() {
   const [showCanvas, setShowCanvas] = useState(false);
   const [showRoadmap, setShowRoadmap] = useState(false);
   const [showNewWorkflowDialog, setShowNewWorkflowDialog] = useState(false);
-  const [newWorkflowModel, setNewWorkflowModel] = useState<string>("gpt-5.2");
+  const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -128,7 +130,7 @@ export default function Home() {
     queryKey: ["/api/workflows"],
   });
 
-  const { data: availableProviders } = useQuery<{ openai: boolean; anthropic: boolean; gemini: boolean }>({
+  const { data: availableProviders } = useQuery<{ anthropic: boolean }>({
     queryKey: ["/api/available-providers"],
     staleTime: Infinity,
   });
@@ -305,6 +307,13 @@ export default function Home() {
       setShowCanvas(false);
       setShowNewWorkflowDialog(false);
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to create workflow",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const deleteWorkflow = useMutation({
@@ -403,7 +412,7 @@ export default function Home() {
           {activeWorkflowId && workflowDetail && (
             <ModelSelector
               workflowId={activeWorkflowId}
-              currentModel={workflowDetail.selectedModel || "gpt-5.2"}
+              currentModel={workflowDetail.selectedModel || "claude-sonnet-4-6"}
               disabled={isStreaming}
             />
           )}
@@ -694,6 +703,15 @@ export default function Home() {
                   })}
                 </SelectContent>
               </Select>
+              {availableProviders && (() => {
+                const selected = MODEL_OPTIONS.find((m) => m.id === newWorkflowModel);
+                const unavailable = selected && !availableProviders[selected.provider as keyof typeof availableProviders];
+                return unavailable ? (
+                  <p className="text-xs text-destructive">
+                    No API key configured for {selected.provider}. Add one to your environment to use this model.
+                  </p>
+                ) : null;
+              })()}
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowNewWorkflowDialog(false)}>
@@ -701,7 +719,11 @@ export default function Home() {
               </Button>
               <Button
                 onClick={() => createWorkflow.mutate(newWorkflowModel)}
-                disabled={createWorkflow.isPending}
+                disabled={createWorkflow.isPending || (() => {
+                  if (!availableProviders) return false;
+                  const selected = MODEL_OPTIONS.find((m) => m.id === newWorkflowModel);
+                  return !!selected && !availableProviders[selected.provider as keyof typeof availableProviders];
+                })()}
                 data-testid="button-confirm-new-workflow"
               >
                 {createWorkflow.isPending ? (

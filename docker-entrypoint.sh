@@ -12,8 +12,6 @@ load_secret() {
 }
 
 load_secret "database_url"        "DATABASE_URL"
-load_secret "openai_api_key"      "AI_INTEGRATIONS_OPENAI_API_KEY"
 load_secret "anthropic_api_key"   "AI_INTEGRATIONS_ANTHROPIC_API_KEY"
-load_secret "gemini_api_key"      "AI_INTEGRATIONS_GEMINI_API_KEY"
 
 exec "$@"

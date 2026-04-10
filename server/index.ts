@@ -1,10 +1,24 @@
 import express, { type Request, Response, NextFunction } from "express";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Trust Caddy (one proxy hop) so req.ip reflects the real client IP
+app.set("trust proxy", 1);
+
+// Rate limit all API routes: 120 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please slow down." },
+});
+app.use("/api", apiLimiter);
 
 declare module "http" {
   interface IncomingMessage {

@@ -4,7 +4,7 @@ import { eq, desc, asc } from "drizzle-orm";
 
 export interface IStorage {
   getWorkflow(id: number): Promise<Workflow | undefined>;
-  getAllWorkflows(): Promise<Workflow[]>;
+  getWorkflowsBySession(sessionId: string): Promise<Workflow[]>;
   createWorkflow(data: InsertWorkflow): Promise<Workflow>;
   updateWorkflowStep(id: number, step: number): Promise<Workflow | undefined>;
   updateWorkflowTitle(id: number, title: string): Promise<Workflow | undefined>;
@@ -22,8 +22,10 @@ export class DatabaseStorage implements IStorage {
     return workflow;
   }
 
-  async getAllWorkflows(): Promise<Workflow[]> {
-    return db.select().from(workflows).orderBy(desc(workflows.updatedAt));
+  async getWorkflowsBySession(sessionId: string): Promise<Workflow[]> {
+    return db.select().from(workflows)
+      .where(eq(workflows.sessionId, sessionId))
+      .orderBy(desc(workflows.updatedAt));
   }
 
   async createWorkflow(data: InsertWorkflow): Promise<Workflow> {

@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { sessionId } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -18,19 +17,12 @@ import {
   Send,
   Trash2,
   Bot,
-  User,
-  ChevronRight,
   Loader2,
   Sparkles,
   ArrowRight,
-  Check,
   MessageSquare,
-  Link as LinkIcon,
   LayoutGrid,
   Map,
-  Cpu,
-  UserCheck,
-  Handshake,
 } from "lucide-react";
 import {
   Select,
@@ -85,10 +77,10 @@ interface WorkflowWithMessages extends Workflow {
 }
 
 import { StepIndicator, STEPS } from "@/components/home/StepIndicator";
-import { MarkdownContent, MarkdownTable } from "@/components/home/MarkdownContent";
+import { MarkdownContent } from "@/components/home/MarkdownContent";
 import { ChatMessage } from "@/components/home/ChatMessage";
 import { CanvasPopup } from "@/components/home/CanvasPopup";
-import { RoadmapPopup, RoadmapItem, TYPE_CONFIG, TypeBadge, groupByPhase, parseRoadmapFromMarkdown, parseRoadmapType } from "@/components/home/RoadmapPopup";
+import { RoadmapPopup } from "@/components/home/RoadmapPopup";
 import { CompanyUrlInput } from "@/components/home/CompanyUrlInput";
 import { ModelSelector } from "@/components/home/ModelSelector";
 
@@ -124,9 +116,8 @@ export default function Home() {
   const [showNewWorkflowDialog, setShowNewWorkflowDialog] = useState(false);
   const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: allWorkflows = [], isLoading: loadingWorkflows } = useQuery<Workflow[]>({
+  const { data: allWorkflows = [] } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
   });
 
@@ -181,7 +172,10 @@ export default function Home() {
       try {
         const response = await fetch(url, {
           method,
-          headers: body ? { "Content-Type": "application/json" } : {},
+          headers: {
+            "X-Session-ID": sessionId,
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
           body: body ? JSON.stringify(body) : undefined,
         });
 
@@ -193,7 +187,9 @@ export default function Home() {
               setIsStreaming(false);
               return;
             }
-          } catch { }
+          } catch {
+            // Response body is not JSON — treat as generic error
+          }
           throw new Error("Request failed");
         }
 
@@ -240,7 +236,9 @@ export default function Home() {
                 queryClient.invalidateQueries({ queryKey: ["/api/workflows", activeWorkflowId] });
                 queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
               }
-            } catch { }
+            } catch (e) {
+              console.warn("Failed to parse SSE event:", e);
+            }
           }
         }
 
@@ -624,7 +622,6 @@ export default function Home() {
                   {isViewingCurrentStep ? (
                     <div className="flex items-end gap-2">
                       <Textarea
-                        ref={textareaRef}
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}

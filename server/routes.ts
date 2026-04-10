@@ -1,9 +1,28 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import type { CanvasData } from "@shared/schema";
 import { MODEL_OPTIONS } from "@shared/schema";
 import { streamChat } from "./llm";
+
+// Extend Express Request to carry the validated session ID
+declare module "express-serve-static-core" {
+  interface Request {
+    sessionId: string;
+  }
+}
+
+// Validates X-Session-ID header and attaches it to req.sessionId.
+// A session ID is any non-empty string between 8 and 128 characters.
+function requireSession(req: Request, res: Response, next: NextFunction) {
+  const raw = req.headers["x-session-id"];
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (!id || id.trim().length < 8 || id.trim().length > 128) {
+    return res.status(401).json({ error: "Missing or invalid session ID" });
+  }
+  req.sessionId = id.trim();
+  next();
+}
 
 const STEP_NAMES = [
   "",
@@ -14,25 +33,6 @@ const STEP_NAMES = [
   "HR Strategy",
 ];
 
-const CANVAS_INSTRUCTION = `
-
-IMPORTANT: When you have enough information about the business model, include a Business Model Canvas in your response using the following exact JSON format wrapped in markers. Update it whenever new relevant information emerges during the conversation.
-
-<!--BMC_START-->
-{
-  "keyPartners": "bullet points of key partners",
-  "keyActivities": "bullet points of key activities",
-  "keyResources": "bullet points of key resources",
-  "valuePropositions": "bullet points of value propositions",
-  "customerRelationships": "bullet points of customer relationships",
-  "channels": "bullet points of channels",
-  "customerSegments": "bullet points of customer segments",
-  "costStructure": "bullet points of cost structure",
-  "revenueStreams": "bullet points of revenue streams"
-}
-<!--BMC_END-->
-
-Fill each field with concise bullet points (use "\\n- " to separate items). Update the canvas progressively as you learn more. Always include ALL 9 fields even if some are "To be determined". Place the canvas block at the END of your message, after your conversational text.`;
 
 const STEP_SYSTEM_PROMPTS: Record<number, string> = {
   1: `You are an expert HR facilitator guiding a hiring process.
@@ -156,27 +156,36 @@ function extractCanvasData(content: string): { cleanContent: string; canvas: Can
   }
 }
 
+// Helper: fetch a workflow and verify it belongs to the requesting session.
+// Returns the workflow or sends a 404 response and returns null.
+async function getOwnedWorkflow(id: number, sessionId: string, res: Response) {
+  const workflow = await storage.getWorkflow(id);
+  if (!workflow || workflow.sessionId !== sessionId) {
+    res.status(404).json({ error: "Workflow not found" });
+    return null;
+  }
+  return workflow;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  app.get("/api/workflows", async (req, res) => {
+  app.get("/api/workflows", requireSession, async (req, res) => {
     try {
-      const allWorkflows = await storage.getAllWorkflows();
-      res.json(allWorkflows);
+      const userWorkflows = await storage.getWorkflowsBySession(req.sessionId);
+      res.json(userWorkflows);
     } catch (error) {
       console.error("Error fetching workflows:", error);
       res.status(500).json({ error: "Failed to fetch workflows" });
     }
   });
 
-  app.get("/api/workflows/:id", async (req, res) => {
+  app.get("/api/workflows/:id", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const workflow = await storage.getWorkflow(id);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
+      const workflow = await getOwnedWorkflow(id, req.sessionId, res);
+      if (!workflow) return;
       const msgs = await storage.getMessagesByWorkflow(id);
       res.json({ ...workflow, messages: msgs });
     } catch (error) {
@@ -185,10 +194,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/workflows", async (req, res) => {
+  app.post("/api/workflows", requireSession, async (req, res) => {
     try {
       const { title, workflowName, selectedModel } = req.body;
       const workflow = await storage.createWorkflow({
+        sessionId: req.sessionId,
         title: title || "New Workflow",
         workflowName: workflowName || "",
         currentStep: 1,
@@ -201,17 +211,15 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/workflows/:id/step", async (req, res) => {
+  app.patch("/api/workflows/:id/step", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (!await getOwnedWorkflow(id, req.sessionId, res)) return;
       const { step } = req.body;
       if (step < 1 || step > 5) {
         return res.status(400).json({ error: "Step must be between 1 and 5" });
       }
       const workflow = await storage.updateWorkflowStep(id, step);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
       res.json(workflow);
     } catch (error) {
       console.error("Error updating step:", error);
@@ -219,14 +227,12 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/workflows/:id/company-url", async (req, res) => {
+  app.patch("/api/workflows/:id/company-url", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (!await getOwnedWorkflow(id, req.sessionId, res)) return;
       const { companyUrl } = req.body;
       const workflow = await storage.updateWorkflowCompanyUrl(id, companyUrl || "");
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
       res.json(workflow);
     } catch (error) {
       console.error("Error updating company URL:", error);
@@ -234,13 +240,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/workflows/:id/canvas", async (req, res) => {
+  app.get("/api/workflows/:id/canvas", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const workflow = await storage.getWorkflow(id);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
+      const workflow = await getOwnedWorkflow(id, req.sessionId, res);
+      if (!workflow) return;
       res.json({ canvasData: workflow.canvasData || null });
     } catch (error) {
       console.error("Error fetching canvas:", error);
@@ -248,13 +252,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/workflows/:id/step-intro", async (req, res) => {
+  app.post("/api/workflows/:id/step-intro", requireSession, async (req, res) => {
     try {
       const workflowId = parseInt(req.params.id);
-      const workflow = await storage.getWorkflow(workflowId);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
+      const workflow = await getOwnedWorkflow(workflowId, req.sessionId, res);
+      if (!workflow) return;
 
       const currentStep = workflow.currentStep;
       const stepHasMessages = (await storage.getMessagesByWorkflow(workflowId))
@@ -346,9 +348,10 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/workflows/:id", async (req, res) => {
+  app.delete("/api/workflows/:id", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (!await getOwnedWorkflow(id, req.sessionId, res)) return;
       await storage.deleteWorkflow(id);
       res.status(204).send();
     } catch (error) {
@@ -357,7 +360,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/workflows/:id/messages", async (req, res) => {
+  app.post("/api/workflows/:id/messages", requireSession, async (req, res) => {
     try {
       const workflowId = parseInt(req.params.id);
       const { content } = req.body;
@@ -366,10 +369,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Message content is required" });
       }
 
-      const workflow = await storage.getWorkflow(workflowId);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
+      const workflow = await getOwnedWorkflow(workflowId, req.sessionId, res);
+      if (!workflow) return;
 
       const currentStep = workflow.currentStep;
 
@@ -442,18 +443,16 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/workflows/:id/model", async (req, res) => {
+  app.patch("/api/workflows/:id/model", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (!await getOwnedWorkflow(id, req.sessionId, res)) return;
       const { selectedModel } = req.body;
       const valid = MODEL_OPTIONS.some((m) => m.id === selectedModel);
       if (!valid) {
         return res.status(400).json({ error: "Invalid model selection" });
       }
       const workflow = await storage.updateWorkflowModel(id, selectedModel);
-      if (!workflow) {
-        return res.status(404).json({ error: "Workflow not found" });
-      }
       res.json(workflow);
     } catch (error) {
       console.error("Error updating model:", error);

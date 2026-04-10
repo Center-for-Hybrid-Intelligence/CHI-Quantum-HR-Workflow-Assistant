@@ -3,20 +3,6 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
-
 export interface CanvasData {
   keyPartners: string;
   keyActivities: string;
@@ -38,6 +24,7 @@ export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
 
 export const workflows = pgTable("workflows", {
   id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull().default(""),
   title: text("title").notNull(),
   workflowName: text("workflow_name").notNull().default(""),
   companyUrl: text("company_url").default(""),

@@ -22,6 +22,9 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - caddy_net
+      - default
 
   postgres:
     image: postgres:16-alpine
@@ -50,3 +53,7 @@ secrets:
 
 volumes:
   postgres_prod_data:
+
+networks:
+  caddy_net:
+    external: true

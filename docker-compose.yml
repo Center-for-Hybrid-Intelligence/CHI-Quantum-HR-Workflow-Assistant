@@ -39,6 +39,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  migrate:
+    build:
+      context: .
+      target: deps          # a build stage that runs full npm ci
+    command: npm run db:push
+    secrets:
+      - database_url
+    environment:
+      - DATABASE_URL=/run/secrets/database_url
+    depends_on:
+      - postgres
+    profiles:
+      - migrate             # won't run with normal `up`, only when called explicitly
 
 volumes:
   postgres_dev_data:

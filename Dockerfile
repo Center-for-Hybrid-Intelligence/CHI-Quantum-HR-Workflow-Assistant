@@ -21,6 +21,7 @@ RUN npm ci --omit=dev
 
 # Copy built artifacts
 COPY --from=builder /app/dist ./dist
+COPY drizzle.config.ts .
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

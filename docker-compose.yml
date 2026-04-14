@@ -45,12 +45,11 @@ services:
       context: .
       target: deps          # a build stage that runs full npm ci
     command: npm run db:push
-    secrets:
-      - database_url
     environment:
-      - DATABASE_URL=/run/secrets/database_url
+      DATABASE_URL: postgres://app_user:devpassword@postgres:5432/app_db
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     profiles:
       - migrate             # won't run with normal `up`, only when called explicitly
 

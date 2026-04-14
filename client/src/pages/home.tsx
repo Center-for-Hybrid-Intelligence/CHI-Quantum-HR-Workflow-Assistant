@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { sessionId } from "@/lib/session";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -170,7 +172,7 @@ export default function Home() {
       setStreamingContent("");
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch(`${base}${url}`, {
           method,
           headers: {
             "X-Session-ID": sessionId,

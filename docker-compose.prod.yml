@@ -10,6 +10,8 @@ services:
     build:
       context: .
       target: production
+      args:
+        VITE_BASE_PATH: /quantum-workflow-assistant
     environment:
       NODE_ENV: production
       PORT: "5000"

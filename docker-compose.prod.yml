@@ -46,7 +46,7 @@ services:
   migrate:
     build:
       context: .
-      target: deps
+      target: builder
     entrypoint: ["sh", "-c", "export DATABASE_URL=$(cat /run/secrets/database_url) && npm run db:push"]
     secrets:
       - database_url

@@ -23,7 +23,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - caddy_net
+      - caddy
       - default
 
   postgres:
@@ -68,5 +68,5 @@ volumes:
   postgres_prod_data:
 
 networks:
-  caddy_net:
+  caddy:
     external: true

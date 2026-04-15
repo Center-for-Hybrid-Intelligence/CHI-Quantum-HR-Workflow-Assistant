@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(DATABASE_URL=postgres://app_user:devpassword@localhost:5432/app_db npm run db:push)"
+      "Bash(DATABASE_URL=postgres://app_user:devpassword@localhost:5432/app_db npm run db:push)",
+      "Bash(docker compose:*)"
     ]
   }
 }

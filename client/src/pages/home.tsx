@@ -121,6 +121,11 @@ export default function Home() {
   // True when the user has manually scrolled away from the bottom.
   // We use a ref (not state) so that the scroll handler never triggers a re-render.
   const userScrolledUpRef = useRef(false);
+  // Snapshot of userScrolledUpRef taken the instant a stream finishes.
+  // The DOM shrinking when the streaming bubble is removed can fire a scroll
+  // event that falsely resets userScrolledUpRef before the committed messages
+  // arrive, so we capture the "real" value here and check it in the effect.
+  const scrolledUpAtStreamEndRef = useRef(false);
 
   const { data: allWorkflows = [] } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
@@ -180,6 +185,14 @@ export default function Home() {
   // Auto-scroll when new committed messages arrive (smooth) or while streaming
   // (instant, to keep up with the incoming text).
   useEffect(() => {
+    // If the user was scrolled up when the stream ended, restore that flag
+    // (DOM shrink from removing the streaming bubble may have falsely reset it)
+    // and don't snap them down.
+    if (scrolledUpAtStreamEndRef.current) {
+      userScrolledUpRef.current = true;
+      scrolledUpAtStreamEndRef.current = false;
+      return;
+    }
     scrollToBottom({ smooth: !isStreaming });
   }, [workflowDetail?.messages, scrollToBottom]);
 
@@ -259,6 +272,10 @@ export default function Home() {
               }
               if (event.done) {
                 receivedDone = true;
+                // Snapshot scroll position BEFORE the DOM shrinks (streaming
+                // bubble removal can fire a spurious scroll event that resets
+                // userScrolledUpRef to false).
+                scrolledUpAtStreamEndRef.current = userScrolledUpRef.current;
                 setIsStreaming(false);
                 setStreamingContent("");
                 if (event.canvasUpdated) {

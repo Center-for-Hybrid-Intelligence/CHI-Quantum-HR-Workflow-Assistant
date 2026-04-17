@@ -118,6 +118,9 @@ export default function Home() {
   const [showNewWorkflowDialog, setShowNewWorkflowDialog] = useState(false);
   const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
+  // True when the user has manually scrolled away from the bottom.
+  // We use a ref (not state) so that the scroll handler never triggers a re-render.
+  const userScrolledUpRef = useRef(false);
 
   const { data: allWorkflows = [] } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
@@ -145,18 +148,44 @@ export default function Home() {
     }
   }, [workflowDetail?.currentStep, activeWorkflowId]);
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      const scrollEl = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
-      if (scrollEl) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
-    }
+  // Attach a scroll listener to the Radix viewport so we can detect when the
+  // user scrolls away from the bottom.  Re-attached whenever the active workflow
+  // changes (which causes the ScrollArea to remount).
+  useEffect(() => {
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      "[data-radix-scroll-area-viewport]"
+    );
+    if (!el) return;
+
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Consider "at bottom" if within 60 px.
+      userScrolledUpRef.current = distFromBottom > 60;
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [activeWorkflowId]);
+
+  const scrollToBottom = useCallback((opts: { force?: boolean; smooth?: boolean } = {}) => {
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      "[data-radix-scroll-area-viewport]"
+    );
+    if (!el) return;
+    // Skip auto-scroll if the user has scrolled up, unless forced.
+    if (!opts.force && userScrolledUpRef.current) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: opts.smooth ? "smooth" : "instant" });
   }, []);
 
+  // Auto-scroll when new committed messages arrive (smooth) or while streaming
+  // (instant, to keep up with the incoming text).
   useEffect(() => {
-    scrollToBottom();
-  }, [workflowDetail?.messages, streamingContent, scrollToBottom]);
+    scrollToBottom({ smooth: !isStreaming });
+  }, [workflowDetail?.messages, scrollToBottom]);
+
+  useEffect(() => {
+    scrollToBottom({ smooth: false });
+  }, [streamingContent, scrollToBottom]);
 
   const allMessages = workflowDetail?.messages || [];
   const visibleMessages = allMessages.filter((m) => m.step === viewingStep);
@@ -351,6 +380,10 @@ export default function Home() {
       setInputValue("");
     }
 
+    // When the user actively sends a message, always snap to the bottom.
+    userScrolledUpRef.current = false;
+    scrollToBottom({ force: true, smooth: true });
+
     const optimisticMsg: Message = {
       id: Date.now(),
       workflowId: activeWorkflowId,
@@ -401,11 +434,8 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-sm font-semibold leading-tight" data-testid="text-app-title">
-              HI Business Model Innovation
+              HR Workflow Assistant
             </h1>
-            <p className="text-xs text-muted-foreground">
-              Hybrid Intelligence Workshop
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { workflows, messages, type Workflow, type InsertWorkflow, type Message, type InsertMessage, type CanvasData } from "@shared/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, count } from "drizzle-orm";
 
 export interface IStorage {
   getWorkflow(id: number): Promise<Workflow | undefined>;
@@ -13,6 +13,7 @@ export interface IStorage {
   updateWorkflowModel(id: number, selectedModel: string): Promise<Workflow | undefined>;
   deleteWorkflow(id: number): Promise<void>;
   getMessagesByWorkflow(workflowId: number): Promise<Message[]>;
+  getMessageCountByWorkflow(workflowId: number): Promise<number>;
   createMessage(data: InsertMessage): Promise<Message>;
 }
 
@@ -85,6 +86,14 @@ export class DatabaseStorage implements IStorage {
 
   async getMessagesByWorkflow(workflowId: number): Promise<Message[]> {
     return db.select().from(messages).where(eq(messages.workflowId, workflowId)).orderBy(asc(messages.createdAt));
+  }
+
+  async getMessageCountByWorkflow(workflowId: number): Promise<number> {
+    const [result] = await db
+      .select({ total: count() })
+      .from(messages)
+      .where(eq(messages.workflowId, workflowId));
+    return result?.total ?? 0;
   }
 
   async createMessage(data: InsertMessage): Promise<Message> {

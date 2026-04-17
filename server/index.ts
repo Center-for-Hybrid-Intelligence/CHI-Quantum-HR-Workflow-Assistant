@@ -36,6 +36,14 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// ─── Security: block direct access to the job database and other sensitive
+// server-side directories.  These files are never part of the static build
+// output, but an extra explicit guard prevents accidental exposure if the
+// static-serving configuration ever changes.
+app.use(["/database", "/database/{*path}", "/secrets", "/secrets/{*path}"], (_req, res) => {
+  res.status(403).json({ error: "Forbidden" });
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -50,7 +58,7 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -76,11 +84,18 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    const raw = err as Record<string, unknown>;
+    const status = (typeof raw?.status === "number" ? raw.status :
+                    typeof raw?.statusCode === "number" ? raw.statusCode : 500);
+    // Sanitize the message: strip any DATABASE_URL-style connection strings and
+    // API-key-like tokens so credentials never reach the client or the log.
+    const rawMessage = typeof raw?.message === "string" ? raw.message : "Internal Server Error";
+    const message = sanitizeErrorMessage(rawMessage);
 
-    console.error("Internal Server Error:", err);
+    // Log the sanitized message only (never the raw error object which may
+    // contain stack frames referencing connection strings).
+    console.error(`Internal Server Error [${status}]: ${message}`);
 
     if (res.headersSent) {
       return next(err);
@@ -115,3 +130,22 @@ app.use((req, res, next) => {
     },
   );
 })();
+
+/**
+ * Remove sensitive patterns from error messages before logging or returning
+ * them to clients:
+ *   • postgres:// / postgresql:// connection strings (contain passwords)
+ *   • Bearer tokens and API-key-style values (sk-..., sk-ant-...)
+ */
+function sanitizeErrorMessage(msg: string): string {
+  return msg
+    // PostgreSQL connection strings: postgres(ql)://user:password@host/db
+    .replace(/postgres(?:ql)?:\/\/[^@\s]+@[^\s"')]+/gi, "postgres://<redacted>")
+    // Generic password= query-params in connection strings
+    .replace(/password=[^&\s"']+/gi, "password=<redacted>")
+    // Anthropic / OpenAI API key patterns
+    .replace(/sk-ant-[A-Za-z0-9_-]{10,}/g, "<api-key>")
+    .replace(/sk-[A-Za-z0-9]{20,}/g, "<api-key>")
+    // Generic Bearer tokens
+    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, "Bearer <redacted>");
+}

@@ -118,7 +118,15 @@ export function TypeBadge({ type }: { type: "ai" | "human" | "hybrid" }) {
 
 export function RoadmapPopup({ messages, open, onOpenChange }: { messages: Message[]; open: boolean; onOpenChange: (open: boolean) => void }) {
     const step5Messages = messages.filter((m) => m.step === 5 && m.role === "assistant");
-    const roadmapContent = step5Messages.map((m) => m.content).join("\n\n");
+
+    // The AI is instructed to emit a complete, updated roadmap table in every
+    // Step 5 response.  We therefore use the most recent assistant message that
+    // contains a table ("|" character) rather than naively concatenating all
+    // messages, which would produce duplicate rows.
+    const latestWithTable = [...step5Messages].reverse().find((m) => m.content.includes("|"));
+    const roadmapContent = latestWithTable?.content
+        ?? step5Messages.map((m) => m.content).join("\n\n");
+
     const roadmapItems = parseRoadmapFromMarkdown(roadmapContent);
     const phaseGroups = groupByPhase(roadmapItems);
     const hasVisualRoadmap = roadmapItems.length > 0;

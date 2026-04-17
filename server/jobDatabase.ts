@@ -9,14 +9,11 @@
  */
 
 import path from "path";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Absolute path to the Excel file.  Resolved relative to this source file so it
-// works both from `server/` during dev and from `dist/` in production (where the
-// file is copied by the Dockerfile into the same relative location).
+// In production the server is bundled to dist/index.cjs (CJS format), so
+// import.meta.url is undefined.  Use __dirname which is always available in CJS.
+// During dev (tsx, ESM), __dirname is injected by tsx as well.
+// Both cases resolve "../database/" to <project-root>/database/.
 const DB_PATH = path.resolve(__dirname, "../database/processed_offers_230125.xlsx");
 
 // Cache – built once on first call.

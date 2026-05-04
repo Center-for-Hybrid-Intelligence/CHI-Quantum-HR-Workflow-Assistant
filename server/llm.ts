@@ -11,6 +11,28 @@ interface ChatMessage {
   content: string;
 }
 
+export async function generateMessage(
+  modelId: ModelId | string,
+  messages: ChatMessage[],
+): Promise<string> {
+  const systemMessages = messages.filter((m) => m.role === "system");
+  const chatMessages = messages.filter((m) => m.role !== "system");
+  const systemText = systemMessages.map((m) => m.content).join("\n\n");
+
+  const response = await anthropicClient.messages.create({
+    model: modelId as string,
+    max_tokens: 512,
+    system: systemText || undefined,
+    messages: chatMessages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+  });
+
+  const block = response.content[0];
+  return block.type === "text" ? block.text : "";
+}
+
 export async function streamChat(
   modelId: ModelId | string,
   messages: ChatMessage[],

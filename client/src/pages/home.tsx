@@ -15,6 +15,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Plus,
   Send,
   Trash2,
@@ -25,6 +35,8 @@ import {
   MessageSquare,
   LayoutGrid,
   Map,
+  BookOpen,
+  UserRound,
 } from "lucide-react";
 import {
   Select,
@@ -39,39 +51,40 @@ import { useToast } from "@/hooks/use-toast";
 
 const STEP_PROMPTS: Record<number, string[]> = {
   1: [
-    "Suggest similar roles from quantum dataset",
-    "Generate job role description",
-    "Identify required skills",
-    "Suggest salary range"
+    "How common is this role in the database?",
+    "Suggest alternative job titles",
+    "What seniority level fits this need?",
+    "What details are still missing?",
+    "Summarize the hiring need so far",
   ],
   2: [
-    "Extract key responsibilities",
-    "Identify required technical skills",
-    "Identify soft skills",
-    "Suggest required education",
-    "Compare with similar quantum jobs"
+    "Show database stats for this role type",
+    "Which skills appear most often in listings?",
+    "Flag rare vs standard requirements",
+    "What education level is most common?",
+    "Split into must-have vs nice-to-have",
   ],
   3: [
-    "Generate full job description",
-    "Improve inclusivity wording",
-    "Align with company culture",
-    "Shorten description",
-    "Expand responsibilities"
+    "I'm ready — write the full draft now",
+    "Make the language more inclusive",
+    "Shorten the draft to ~300 words",
+    "Strengthen the benefits section",
+    "Rewrite for a startup tone",
   ],
   4: [
-    "Optimize for LinkedIn",
-    "Optimize for diversity",
-    "Optimize for search",
-    "Generate alternative titles",
-    "Benchmark against job database"
+    "Write a LinkedIn-ready version",
+    "Audit for biased or exclusive language",
+    "List the top ATS keywords from the database",
+    "Compare title options by market frequency",
+    "Write a 280-character social media teaser",
   ],
   5: [
-    "Generate hiring roadmap",
-    "Create interview structure",
-    "Generate screening questions",
-    "Suggest evaluation criteria",
-    "Generate hiring workflow"
-  ]
+    "Add a technical interview stage",
+    "Generate 5 role-specific screening questions",
+    "Build a scoring rubric for evaluation",
+    "Estimate the hiring timeline for this role",
+    "Draft a 30-60-90 day onboarding plan",
+  ],
 };
 
 interface WorkflowWithMessages extends Workflow {
@@ -83,6 +96,7 @@ import { MarkdownContent } from "@/components/home/MarkdownContent";
 import { ChatMessage } from "@/components/home/ChatMessage";
 import { CanvasPopup } from "@/components/home/CanvasPopup";
 import { RoadmapPopup } from "@/components/home/RoadmapPopup";
+import { TutorialDialog } from "@/components/home/TutorialDialog";
 import { CompanyUrlInput } from "@/components/home/CompanyUrlInput";
 import { ModelSelector } from "@/components/home/ModelSelector";
 
@@ -112,10 +126,22 @@ export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isPretending, setIsPretending] = useState(false);
   const [introTriggeredFor, setIntroTriggeredFor] = useState<string | null>(null);
   const [showCanvas, setShowCanvas] = useState(false);
   const [showRoadmap, setShowRoadmap] = useState(false);
   const [showNewWorkflowDialog, setShowNewWorkflowDialog] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [showNextStepWarning, setShowNextStepWarning] = useState(false);
+  // Open on first visit; localStorage key persists the "seen" flag across sessions.
+  const [showTutorial, setShowTutorial] = useState(
+    () => localStorage.getItem("chi-hr-tutorial-seen") !== "1"
+  );
+
+  const handleTutorialOpenChange = (open: boolean) => {
+    if (!open) localStorage.setItem("chi-hr-tutorial-seen", "1");
+    setShowTutorial(open);
+  };
   const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
   // True when the user has manually scrolled away from the bottom.
@@ -421,6 +447,24 @@ export default function Home() {
     });
   }, [inputValue, activeWorkflowId, isStreaming, viewingStep, currentStep, streamSSEResponse]);
 
+  const pretendToBeMe = useCallback(async () => {
+    if (!activeWorkflowId || isStreaming || isPretending) return;
+    setIsPretending(true);
+    try {
+      const response = await fetch(`${base}/api/workflows/${activeWorkflowId}/pretend-user`, {
+        method: "POST",
+        headers: { "X-Session-ID": sessionId },
+      });
+      if (!response.ok) throw new Error("Failed to generate message");
+      const { message } = await response.json();
+      if (message) await sendMessage(message);
+    } catch (error) {
+      console.error("Error generating pretend-user message:", error);
+    } finally {
+      setIsPretending(false);
+    }
+  }, [activeWorkflowId, isStreaming, isPretending, sendMessage]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -431,6 +475,13 @@ export default function Home() {
   const viewingStepName = STEPS.find((s) => s.step === viewingStep)?.name || "";
   const isViewingCurrentStep = viewingStep === currentStep;
   const canvasData = workflowDetail?.canvasData as CanvasData | null | undefined;
+
+  // The AI includes <!--NEXT_STEP_READY--> when it believes the current step is
+  // complete.  The marker is stripped from rendered output but kept in the stored
+  // message so the flag survives page refresh.
+  const isNextStepReady = visibleMessages.some(
+    (m) => m.role === "assistant" && m.content.includes("<!--NEXT_STEP_READY-->")
+  );
 
   const handleStepClick = (step: number) => {
     if (isStreaming) return;
@@ -463,6 +514,15 @@ export default function Home() {
               disabled={isStreaming}
             />
           )}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowTutorial(true)}
+            title="Tutorial"
+            data-testid="button-tutorial"
+          >
+            <BookOpen className="w-4 h-4" />
+          </Button>
         </div>
       </header>
 
@@ -492,7 +552,7 @@ export default function Home() {
                 variant="ghost"
                 onClick={(e) => {
                   e.stopPropagation();
-                  deleteWorkflow.mutate(w.id);
+                  setPendingDeleteId(w.id);
                 }}
                 data-testid={`button-delete-workflow-${w.id}`}
                 className="ml-0.5 w-7 h-7"
@@ -656,14 +716,22 @@ export default function Home() {
                       </div>
                       {currentStep < 5 && (
                         <Button
-                          variant="secondary"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={() => handleAdvanceStep(currentStep + 1)}
+                          variant={isNextStepReady ? "default" : "outline"}
+                          size="default"
+                          className={isNextStepReady
+                            ? "shrink-0 font-semibold shadow-md animate-pulse hover:animate-none"
+                            : "shrink-0 text-muted-foreground"}
+                          onClick={() => {
+                            if (isNextStepReady) {
+                              handleAdvanceStep(currentStep + 1);
+                            } else {
+                              setShowNextStepWarning(true);
+                            }
+                          }}
                           data-testid="button-next-step"
                         >
                           Next: {STEPS[currentStep]?.name}
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                          <ArrowRight className="w-4 h-4 ml-1.5" />
                         </Button>
                       )}
                     </div>
@@ -675,11 +743,27 @@ export default function Home() {
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={`Type your message for Step ${currentStep}: ${viewingStepName}...`}
-                        className="resize-none min-h-[44px] max-h-[160px] text-sm"
+                        className="resize-none min-h-[44px] max-h-[160px] text-sm flex-1"
                         rows={1}
                         disabled={isStreaming}
                         data-testid="input-message"
                       />
+                      <Button
+                        variant="outline"
+                        onClick={pretendToBeMe}
+                        disabled={isStreaming || isPretending}
+                        title="Playtester: generate a user message and send it"
+                        data-testid="button-pretend-user"
+                        className="shrink-0 gap-1.5 text-muted-foreground"
+                        size="sm"
+                      >
+                        {isPretending ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <UserRound className="w-3.5 h-3.5" />
+                        )}
+                        <span className="text-xs">Pretend to be me</span>
+                      </Button>
                       <Button
                         onClick={() => sendMessage()}
                         disabled={!inputValue.trim() || isStreaming}
@@ -718,6 +802,61 @@ export default function Home() {
       {workflowDetail && (
         <RoadmapPopup messages={allMessages} open={showRoadmap} onOpenChange={setShowRoadmap} />
       )}
+
+      <TutorialDialog open={showTutorial} onOpenChange={handleTutorialOpenChange} />
+
+      <AlertDialog
+        open={showNextStepWarning}
+        onOpenChange={setShowNextStepWarning}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Not all information provided yet</AlertDialogTitle>
+            <AlertDialogDescription>
+              The AI assistant hasn't confirmed that all required information for this step has been covered. Proceeding now may result in an incomplete step.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay on this step</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowNextStepWarning(false);
+                handleAdvanceStep(currentStep + 1);
+              }}
+            >
+              Proceed anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete workflow?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the workflow and all its messages. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDeleteId !== null) {
+                  deleteWorkflow.mutate(pendingDeleteId);
+                  setPendingDeleteId(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={showNewWorkflowDialog} onOpenChange={setShowNewWorkflowDialog}>
         <DialogContent className="sm:max-w-sm">

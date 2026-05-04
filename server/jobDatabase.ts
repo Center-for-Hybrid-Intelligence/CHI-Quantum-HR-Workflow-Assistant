@@ -9,12 +9,10 @@
  */
 
 import path from "path";
+import { fileURLToPath } from "url";
 
-// In production the server is bundled to dist/index.cjs (CJS format), so
-// import.meta.url is undefined.  Use __dirname which is always available in CJS.
-// During dev (tsx, ESM), __dirname is injected by tsx as well.
-// Both cases resolve "../database/" to <project-root>/database/.
-const DB_PATH = path.resolve(__dirname, "../database/processed_offers_230125.xlsx");
+const _dirname = path.dirname(fileURLToPath(import.meta.url));
+const DB_PATH = path.resolve(_dirname, "../database/processed_offers_230125.xlsx");
 
 // Cache – built once on first call.
 let _contextCache: string | null = null;
@@ -70,9 +68,12 @@ function _buildSummary(rows: Record<string, unknown>[]): string {
 
   const role: Record<string, number> = {};
   const degree: Record<string, number> = {};
+  const degreeDomain: Record<string, number> = {};
   const continent: Record<string, number> = {};
+  const country: Record<string, number> = {};
   const size: Record<string, number> = {};
   let pComp = 0, pSense = 0, pComms = 0, pHW = 0;
+  let academicCount = 0;
 
   for (const r of rows) {
     const inc = (obj: Record<string, number>, key: unknown) => {
@@ -81,26 +82,53 @@ function _buildSummary(rows: Record<string, unknown>[]): string {
     inc(role, r["job_role"]);
     inc(degree, r["degree_level"]);
     inc(continent, r["gpt_continent"]);
+    inc(country, r["gpt_country"]);
     inc(size, r["Company size"]);
+
+    // degree_domains is stored as a Python list string: "['software', 'physics', ...]"
+    const rawDomains = r["degree_domains"];
+    if (typeof rawDomains === "string") {
+      const matches = rawDomains.match(/['"]([^'"]+)['"]/g);
+      if (matches) {
+        for (const m of matches) inc(degreeDomain, m.replace(/['"]/g, ""));
+      }
+    }
+
     if (r["pillar_quantum_computation_and_simulation"]) pComp++;
     if (r["pillar_quantum_sensing_and_metrology"]) pSense++;
     if (r["pillar_quantum_communications"]) pComms++;
     if (r["pillar_hardware_and_materials"]) pHW++;
+
+    // academic field comes as boolean true/false from xlsx
+    if (r["academic"] === true) academicCount++;
   }
 
+  const industryPct = Math.round(((total - academicCount) * 100) / total);
+  const academicPct = Math.round((academicCount * 100) / total);
+
   return `\
-QUANTUM COMPUTING JOB MARKET DATABASE (${total.toLocaleString()} verified listings):
+QUANTUM COMPUTING JOB MARKET DATABASE (${total.toLocaleString()} verified listings — cite these numbers when making comparisons):
 
 JOB ROLE DISTRIBUTION:
 ${_top(role, total, 10)}
 
-DEGREE REQUIREMENTS (most common level):
+SECTOR SPLIT:
+  • Industry / private sector: ${total - academicCount} listings (${industryPct}%)
+  • Academic / research: ${academicCount} listings (${academicPct}%)
+
+DEGREE LEVEL REQUIRED:
 ${_top(degree, total, 6)}
 
-GEOGRAPHIC DISTRIBUTION:
-${_top(continent, total, 7)}
+DEGREE DOMAINS (fields of study mentioned):
+${_top(degreeDomain, Object.values(degreeDomain).reduce((a, b) => a + b, 0), 8)}
 
-QUANTUM TECHNOLOGY PILLARS represented in listings:
+TOP HIRING COUNTRIES:
+${_top(country, total, 8)}
+
+GEOGRAPHIC DISTRIBUTION (continent):
+${_top(continent, total, 6)}
+
+QUANTUM TECHNOLOGY PILLARS:
   • Quantum Computation & Simulation : ${pComp} listings (${Math.round((pComp * 100) / total)}%)
   • Hardware & Materials             : ${pHW} listings (${Math.round((pHW * 100) / total)}%)
   • Quantum Sensing & Metrology      : ${pSense} listings (${Math.round((pSense * 100) / total)}%)
@@ -109,7 +137,7 @@ QUANTUM TECHNOLOGY PILLARS represented in listings:
 COMPANY SIZES:
 ${_top(size, total, 6)}
 
-Use this market data to ground your analysis in real quantum-industry hiring patterns: \
-validate skill requirements, suggest realistic qualifications, and benchmark the role \
-being defined against actual market norms.`;
+USAGE INSTRUCTIONS: When making any claim about market norms, cite specific numbers from \
+this database (e.g. "our database shows X% of listings require…"). \
+Never invent statistics not present here.`;
 }

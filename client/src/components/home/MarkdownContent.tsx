@@ -106,6 +106,7 @@ export function MarkdownTable({ rows }: { rows: string[][] }) {
 export function MarkdownContent({ content }: { content: string }) {
     const cleanContent = content
         .replace(/<!--BMC_START-->[\s\S]*?<!--BMC_END-->/, "")
+        .replace(/<!--NEXT_STEP_READY-->/g, "")
         .trim();
 
     const lines = cleanContent.split("\n");

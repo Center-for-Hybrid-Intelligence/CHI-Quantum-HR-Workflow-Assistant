@@ -134,17 +134,15 @@ export function RoadmapPopup({ messages, open, onOpenChange }: { messages: Messa
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-6xl w-[96vw] h-[90vh] flex flex-col p-0" data-testid="roadmap-popup">
-                <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
-                    <div className="flex items-center justify-between">
+                <DialogHeader className="px-4 sm:px-6 pt-5 pb-4 border-b shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                 <Map className="w-5 h-5 text-primary" />
                             </div>
-                            <div>
-                                <DialogTitle className="text-xl">Implementation Roadmap</DialogTitle>
-                            </div>
+                            <DialogTitle className="text-lg sm:text-xl">Implementation Roadmap</DialogTitle>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
                             {(["ai", "human", "hybrid"] as const).map((type) => (
                                 <TypeBadge key={type} type={type} />
                             ))}
@@ -163,8 +161,8 @@ export function RoadmapPopup({ messages, open, onOpenChange }: { messages: Messa
                                             </span>
                                             <h3 className="text-sm font-semibold">{group.phase}</h3>
                                         </div>
-                                        <div className="rounded-lg border overflow-hidden">
-                                            <table className="w-full text-sm" data-testid={`roadmap-table-${gi}`}>
+                                        <div className="rounded-lg border overflow-x-auto">
+                                            <table className="w-full text-sm min-w-[600px]" data-testid={`roadmap-table-${gi}`}>
                                                 <thead>
                                                     <tr className="bg-muted/50">
                                                         <th className="text-left font-medium text-muted-foreground px-4 py-2.5 w-[4%]"></th>

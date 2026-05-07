@@ -15,8 +15,13 @@ declare module "express-serve-static-core" {
 }
 
 // Maximum number of messages (user + assistant) allowed per workflow.
-// High enough to cover a complete 5-step process with generous back-and-forth.
 const MAX_MESSAGES_PER_WORKFLOW = 500;
+
+// Maximum number of workflows a single session may create.
+const MAX_WORKFLOWS_PER_SESSION = 10;
+
+// Maximum character length for a single user message.
+const MAX_MESSAGE_LENGTH = 2000;
 
 // Per-session rate limit for the message-posting endpoint.
 // Keyed by session ID so distributed IPs (NAT / proxies) get individual buckets.
@@ -37,6 +42,25 @@ const messageLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Message rate limit exceeded. Please wait before sending another message." },
+});
+
+// Daily cap per session — prevents sustained abuse across many workflows.
+const dailyMessageLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24-hour window
+  max: 150,
+  keyGenerator: (req: Request) => {
+    const raw = req.headers["x-session-id"];
+    const sessionId = Array.isArray(raw) ? raw[0] : raw;
+    if (sessionId) return `daily:${sessionId}`;
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ?? req.socket.remoteAddress ?? "unknown";
+    return `daily:${ip}`;
+  },
+  skip: () => false,
+  validate: { xForwardedForHeader: false },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Daily message limit reached. Please come back tomorrow." },
 });
 
 // Validates X-Session-ID header and attaches it to req.sessionId.
@@ -376,6 +400,12 @@ export async function registerRoutes(
 
   app.post("/api/workflows", requireSession, async (req, res) => {
     try {
+      const existing = await storage.getWorkflowsBySession(req.sessionId);
+      if (existing.length >= MAX_WORKFLOWS_PER_SESSION) {
+        return res.status(429).json({
+          error: `Maximum of ${MAX_WORKFLOWS_PER_SESSION} workflows per session reached. Delete an existing workflow to create a new one.`,
+        });
+      }
       const { title, workflowName, selectedModel } = req.body;
       const workflow = await storage.createWorkflow({
         sessionId: req.sessionId,
@@ -531,6 +561,7 @@ export async function registerRoutes(
     "/api/workflows/:id/messages",
     requireSession,
     messageLimiter,
+    dailyMessageLimiter,
     async (req, res) => {
       try {
         const workflowId = parseInt(req.params["id"] as string);
@@ -538,6 +569,12 @@ export async function registerRoutes(
 
         if (!content || !content.trim()) {
           return res.status(400).json({ error: "Message content is required" });
+        }
+
+        if (content.length > MAX_MESSAGE_LENGTH) {
+          return res.status(400).json({
+            error: `Message exceeds the maximum length of ${MAX_MESSAGE_LENGTH} characters.`,
+          });
         }
 
         const workflow = await getOwnedWorkflow(workflowId, req.sessionId, res);

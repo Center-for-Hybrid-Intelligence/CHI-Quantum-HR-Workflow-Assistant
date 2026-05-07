@@ -6,7 +6,7 @@ export function ChatMessage({ message, isStreaming }: { message: { role: string;
 
     return (
         <div
-            className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
+            className={`flex gap-3 min-w-0 ${isUser ? "justify-end" : "justify-start"}`}
             data-testid={`message-${message.role}`}
         >
             {!isUser && (
@@ -17,16 +17,12 @@ export function ChatMessage({ message, isStreaming }: { message: { role: string;
                 </div>
             )}
             <div
-                className={`max-w-[80%] rounded-md px-4 py-3 ${isUser
+                className={`max-w-[90%] sm:max-w-[80%] min-w-0 rounded-md px-4 py-3 ${isUser
                         ? "bg-primary text-primary-foreground"
                         : "bg-card border border-card-border"
                     }`}
             >
-                {isUser ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                ) : (
-                    <MarkdownContent content={message.content} />
-                )}
+                <MarkdownContent content={message.content} />
                 {isStreaming && (
                     <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
                 )}

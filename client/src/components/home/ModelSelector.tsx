@@ -73,7 +73,7 @@ export function ModelSelector({
             disabled={disabled || updateModel.isPending}
         >
             <SelectTrigger
-                className="w-[180px] text-xs"
+                className="w-[120px] sm:w-[180px] text-xs"
                 data-testid="select-model"
             >
                 <SelectValue placeholder="Select model" />

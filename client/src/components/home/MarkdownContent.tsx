@@ -76,8 +76,8 @@ export function MarkdownTable({ rows }: { rows: string[][] }) {
     const dataRows = rows.slice(1);
 
     return (
-        <div className="my-3 overflow-x-auto rounded-md border" data-testid="markdown-table">
-            <table className="w-full text-sm border-collapse">
+        <div className="my-3 w-full overflow-x-auto rounded-md border" data-testid="markdown-table">
+            <table className="min-w-full text-sm border-collapse">
                 <thead>
                     <tr className="bg-muted/50">
                         {headers.map((h, i) => (
@@ -191,6 +191,19 @@ export function MarkdownContent({ content }: { content: string }) {
             continue;
         }
 
+        // Empty lines: stay in the list if the next non-empty line is also a list
+        // item (the AI often puts blank lines between numbered points).
+        if (line.trim() === "") {
+            const nextNonEmpty = lines.slice(i + 1).find(l => l.trim() !== "") ?? "";
+            const nextIsList =
+                /^[\s]*[-*]\s+/.test(nextNonEmpty) ||
+                /^[\s]*\d+\.\s+/.test(nextNonEmpty);
+            if (listType && nextIsList) continue;
+            flushList();
+            elements.push(<div key={i} className="h-2" />);
+            continue;
+        }
+
         flushList();
 
         if (line.startsWith("### ")) {
@@ -213,8 +226,6 @@ export function MarkdownContent({ content }: { content: string }) {
             );
         } else if (line.trim() === "---") {
             elements.push(<Separator key={i} className="my-3" />);
-        } else if (line.trim() === "") {
-            elements.push(<div key={i} className="h-2" />);
         } else {
             elements.push(
                 <p key={i} className="text-sm leading-relaxed">
@@ -226,5 +237,5 @@ export function MarkdownContent({ content }: { content: string }) {
     flushList();
     flushTable();
 
-    return <div className="space-y-0.5">{elements}</div>;
+    return <div className="space-y-0.5 min-w-0 max-w-full">{elements}</div>;
 }

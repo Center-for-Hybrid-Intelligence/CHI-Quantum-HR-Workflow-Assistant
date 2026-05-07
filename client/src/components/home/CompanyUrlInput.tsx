@@ -41,7 +41,7 @@ export function CompanyUrlInput({
     return (
         <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b" data-testid="company-url-section">
             <LinkIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground shrink-0">Company website:</span>
+            <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">Company website:</span>
             <Input
                 type="url"
                 value={url}
@@ -50,7 +50,7 @@ export function CompanyUrlInput({
                     setSaved(false);
                 }}
                 placeholder="https://yourcompany.com"
-                className="h-7 text-xs flex-1 max-w-xs"
+                className="h-7 text-xs flex-1"
                 data-testid="input-company-url"
             />
             <Button

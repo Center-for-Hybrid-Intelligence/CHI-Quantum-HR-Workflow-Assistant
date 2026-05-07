@@ -37,7 +37,14 @@ import {
   Map,
   BookOpen,
   UserRound,
+  Lightbulb,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -51,39 +58,34 @@ import { useToast } from "@/hooks/use-toast";
 
 const STEP_PROMPTS: Record<number, string[]> = {
   1: [
-    "How common is this role in the database?",
-    "Suggest alternative job titles",
-    "What seniority level fits this need?",
-    "What details are still missing?",
-    "Summarize the hiring need so far",
+    "How common is this role?",
+    "Suggest alternative titles",
+    "What seniority level fits?",
+    "What details are missing?",
   ],
   2: [
-    "Show database stats for this role type",
-    "Which skills appear most often in listings?",
-    "Flag rare vs standard requirements",
-    "What education level is most common?",
-    "Split into must-have vs nice-to-have",
+    "Show database stats",
+    "Most common skills?",
+    "Rare vs standard requirements",
+    "Must-have vs nice-to-have",
   ],
   3: [
-    "I'm ready — write the full draft now",
-    "Make the language more inclusive",
-    "Shorten the draft to ~300 words",
-    "Strengthen the benefits section",
-    "Rewrite for a startup tone",
+    "Write the full draft",
+    "More inclusive language",
+    "Strengthen the benefits",
+    "Startup tone",
   ],
   4: [
-    "Write a LinkedIn-ready version",
-    "Audit for biased or exclusive language",
-    "List the top ATS keywords from the database",
-    "Compare title options by market frequency",
-    "Write a 280-character social media teaser",
+    "LinkedIn version",
+    "Audit for bias",
+    "Top ATS keywords",
+    "Social media teaser",
   ],
   5: [
-    "Add a technical interview stage",
-    "Generate 5 role-specific screening questions",
-    "Build a scoring rubric for evaluation",
-    "Estimate the hiring timeline for this role",
-    "Draft a 30-60-90 day onboarding plan",
+    "Add interview stage",
+    "Screening questions",
+    "Build a scoring rubric",
+    "Estimate hiring timeline",
   ],
 };
 
@@ -133,6 +135,7 @@ export default function Home() {
   const [showNewWorkflowDialog, setShowNewWorkflowDialog] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [showNextStepWarning, setShowNextStepWarning] = useState(false);
+  const [showPromptSheet, setShowPromptSheet] = useState(false);
   // Open on first visit; localStorage key persists the "seen" flag across sessions.
   const [showTutorial, setShowTutorial] = useState(
     () => localStorage.getItem("chi-hr-tutorial-seen") !== "1"
@@ -495,16 +498,14 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-background" data-testid="home-page">
-      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-background z-50 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+      <header className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b bg-background z-50 sticky top-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
           </div>
-          <div>
-            <h1 className="text-sm font-semibold leading-tight" data-testid="text-app-title">
-              HR Workflow Assistant
-            </h1>
-          </div>
+          <h1 className="text-sm font-semibold leading-tight truncate" data-testid="text-app-title">
+            HR Workflow Assistant
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           {activeWorkflowId && workflowDetail && (
@@ -541,7 +542,7 @@ export default function Home() {
                 }`}
             >
               <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span className="max-w-[120px] truncate">{w.title}</span>
+              <span className="max-w-[80px] sm:max-w-[120px] truncate">{w.title}</span>
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 {Math.min(w.currentStep, 5)}/5
               </Badge>
@@ -640,7 +641,7 @@ export default function Home() {
               )}
 
               <ScrollArea className="flex-1" ref={scrollRef}>
-                <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+                <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
                   {loadingDetail ? (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -696,44 +697,80 @@ export default function Home() {
                 </div>
               </ScrollArea>
 
-              <div className="border-t bg-background px-4 py-3">
+              <div className="border-t bg-background px-3 sm:px-4 py-3">
                 <div className="max-w-3xl mx-auto space-y-2">
                   {isViewingCurrentStep && currentStep <= 5 && visibleMessages.length > 0 && !isStreaming && (
-                    <div className="flex justify-end gap-2 items-center">
-                      <div className="flex flex-wrap gap-2 flex-1 items-center">
-                        {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
+                    <div className="space-y-2">
+                      {/* Desktop: chips + next step on one row */}
+                      <div className="hidden sm:flex items-center gap-2">
+                        <div className="flex gap-1.5 flex-1 flex-wrap">
+                          {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              className="text-[10px] h-6 px-2.5 py-0 rounded-full bg-primary/5 hover:bg-primary/20 border-primary/20 text-primary transition-colors shrink-0"
+                              onClick={() => sendMessage(prompt)}
+                            >
+                              <Bot className="w-3 h-3 mr-1" />
+                              {prompt}
+                            </Button>
+                          ))}
+                        </div>
+                        {currentStep < 5 && (
                           <Button
-                            key={idx}
-                            variant="outline"
-                            size="sm"
-                            className="text-[10px] h-6 px-2.5 py-0 rounded-full bg-primary/5 hover:bg-primary/20 border-primary/20 text-primary transition-colors"
-                            onClick={() => sendMessage(prompt)}
+                            variant={isNextStepReady ? "default" : "outline"}
+                            size="default"
+                            className={`shrink-0 ${isNextStepReady
+                              ? "font-semibold shadow-md animate-pulse hover:animate-none"
+                              : "text-muted-foreground"}`}
+                            onClick={() => {
+                              if (isNextStepReady) {
+                                handleAdvanceStep(currentStep + 1);
+                              } else {
+                                setShowNextStepWarning(true);
+                              }
+                            }}
+                            data-testid="button-next-step"
                           >
-                            <Bot className="w-3 h-3 mr-1" />
-                            {prompt}
+                            Next: {STEPS[currentStep]?.name}
+                            <ArrowRight className="w-4 h-4 ml-1.5" />
                           </Button>
-                        ))}
+                        )}
                       </div>
-                      {currentStep < 5 && (
+
+                      {/* Mobile: suggestions button + next step on one row */}
+                      <div className="flex sm:hidden gap-2">
                         <Button
-                          variant={isNextStepReady ? "default" : "outline"}
-                          size="default"
-                          className={isNextStepReady
-                            ? "shrink-0 font-semibold shadow-md animate-pulse hover:animate-none"
-                            : "shrink-0 text-muted-foreground"}
-                          onClick={() => {
-                            if (isNextStepReady) {
-                              handleAdvanceStep(currentStep + 1);
-                            } else {
-                              setShowNextStepWarning(true);
-                            }
-                          }}
-                          data-testid="button-next-step"
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1.5 text-xs text-primary border-primary/20 bg-primary/5"
+                          onClick={() => setShowPromptSheet(true)}
                         >
-                          Next: {STEPS[currentStep]?.name}
-                          <ArrowRight className="w-4 h-4 ml-1.5" />
+                          <Lightbulb className="w-3.5 h-3.5" />
+                          Suggestions
                         </Button>
-                      )}
+                        {currentStep < 5 && (
+                          <Button
+                            variant={isNextStepReady ? "default" : "outline"}
+                            size="sm"
+                            className={`flex-1 gap-1.5 ${isNextStepReady
+                              ? "font-semibold shadow-md animate-pulse hover:animate-none"
+                              : "text-muted-foreground"}`}
+                            onClick={() => {
+                              if (isNextStepReady) {
+                                handleAdvanceStep(currentStep + 1);
+                              } else {
+                                setShowNextStepWarning(true);
+                              }
+                            }}
+                            data-testid="button-next-step-mobile"
+                          >
+                            Next Step
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {isViewingCurrentStep ? (
@@ -742,7 +779,7 @@ export default function Home() {
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={`Type your message for Step ${currentStep}: ${viewingStepName}...`}
+                        placeholder="Type your message..."
                         className="resize-none min-h-[44px] max-h-[160px] text-sm flex-1"
                         rows={1}
                         disabled={isStreaming}
@@ -762,7 +799,7 @@ export default function Home() {
                         ) : (
                           <UserRound className="w-3.5 h-3.5" />
                         )}
-                        <span className="text-xs">Pretend to be me</span>
+                        <span className="text-xs hidden sm:inline">Pretend to be me</span>
                       </Button>
                       <Button
                         onClick={() => sendMessage()}
@@ -804,6 +841,33 @@ export default function Home() {
       )}
 
       <TutorialDialog open={showTutorial} onOpenChange={handleTutorialOpenChange} />
+
+      <Sheet open={showPromptSheet} onOpenChange={setShowPromptSheet}>
+        <SheetContent side="bottom" className="px-4 pb-8 pt-5">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="w-4 h-4 text-primary" />
+              Suggestions
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col gap-2">
+            {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                className="w-full justify-start gap-3 h-auto py-3 text-sm"
+                onClick={() => {
+                  sendMessage(prompt);
+                  setShowPromptSheet(false);
+                }}
+              >
+                <Bot className="w-4 h-4 shrink-0 text-primary" />
+                {prompt}
+              </Button>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={showNextStepWarning}

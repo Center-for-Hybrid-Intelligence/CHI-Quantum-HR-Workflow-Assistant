@@ -14,7 +14,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: "5000"
-      DATABASE_URL: postgres://app_user:devpassword@postgres:5432/app_db
+      DATABASE_URL: postgres://app_user:devpassword@quantum-hr-db:5432/app_db
       VITE_BASE_PATH: /quantum-workflow-assistant/
     env_file:
       - path: .env
@@ -25,11 +25,11 @@ services:
       - default
       - caddy
     depends_on:
-      postgres:
+      quantum-hr-db:
         condition: service_healthy
     command: npm run dev
 
-  postgres:
+  quantum-hr-db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: app_user
@@ -51,9 +51,9 @@ services:
       target: deps          # a build stage that runs full npm ci
     command: npm run db:push
     environment:
-      DATABASE_URL: postgres://app_user:devpassword@postgres:5432/app_db
+      DATABASE_URL: postgres://app_user:devpassword@quantum-hr-db:5432/app_db
     depends_on:
-      postgres:
+      quantum-hr-db:
         condition: service_healthy
     profiles:
       - migrate             # won't run with normal `up`, only when called explicitly

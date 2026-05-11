@@ -33,7 +33,7 @@ services:
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"       # Expose so you can connect with a local DB client
+      - "5433:5432"       # Expose so you can connect with a local DB client
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
       interval: 5s

@@ -4,6 +4,7 @@
 
 services:
   app:
+    container_name: chi-quantum-workflow-assistant
     build:
       context: .
       target: deps        # Use the deps stage (has all node_modules)

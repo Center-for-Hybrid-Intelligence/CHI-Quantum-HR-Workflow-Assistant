@@ -20,6 +20,9 @@ services:
         required: false   # Optional — add API keys here for dev
     ports:
       - "5000:5000"
+    networks:
+      - default
+      - caddy
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,3 +59,7 @@ services:
 
 volumes:
   postgres_dev_data:
+
+networks:
+  caddy:
+    external: true

@@ -7,4 +7,3 @@ dist
 secrets/
 *.log
 .local/
-database/

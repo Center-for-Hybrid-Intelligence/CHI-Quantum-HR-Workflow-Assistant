@@ -11,8 +11,16 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-const _dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(_dirname, "../database/processed_offers_230125.xlsx");
+function getDbPath(): string {
+  try {
+    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../database/processed_offers_230125.xlsx");
+  } catch {
+    // esbuild CJS bundle: import.meta.url is undefined, fall back to cwd
+    return path.resolve(process.cwd(), "database/processed_offers_230125.xlsx");
+  }
+}
+
+const DB_PATH = getDbPath();
 
 // Cache – built once on first call.
 let _contextCache: string | null = null;

@@ -21,7 +21,7 @@ services:
     expose:
       - "5000"
     depends_on:
-      postgres:
+      chi-quantum-hr-db:
         condition: service_healthy
     restart: unless-stopped
     hostname: chi-quantum-workflow-assistant
@@ -29,9 +29,9 @@ services:
       - caddy
       - default
 
-  postgres:
+  chi-quantum-hr-db:
     image: postgres:16-alpine
-    hostname: chi-quantum-workflow-db
+    hostname: chi-quantum-hr-db
     environment:
       POSTGRES_USER: app_user
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
@@ -55,7 +55,7 @@ services:
     secrets:
       - database_url
     depends_on:
-      postgres:
+      chi-quantum-hr-db:
         condition: service_healthy
     profiles:
       - migrate

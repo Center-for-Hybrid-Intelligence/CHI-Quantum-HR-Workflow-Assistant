@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Link as LinkIcon, Loader2 } from "lucide-react";
 
@@ -14,6 +13,7 @@ export function CompanyUrlInput({
 }) {
     const [url, setUrl] = useState(currentUrl);
     const [saved, setSaved] = useState(!!currentUrl);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const saveMutation = useMutation({
         mutationFn: async (companyUrl: string) => {
@@ -32,46 +32,42 @@ export function CompanyUrlInput({
         setSaved(!!currentUrl);
     }, [currentUrl, workflowId]);
 
-    const handleSave = () => {
-        if (url.trim()) {
-            saveMutation.mutate(url.trim());
-        }
+    const handleChange = (value: string) => {
+        setUrl(value);
+        setSaved(false);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            saveMutation.mutate(value.trim());
+        }, 800);
+    };
+
+    const handleBlur = () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (!saved) saveMutation.mutate(url.trim());
     };
 
     return (
-        <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b" data-testid="company-url-section">
-            <LinkIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">Company website:</span>
-            <Input
-                type="url"
-                value={url}
-                onChange={(e) => {
-                    setUrl(e.target.value);
-                    setSaved(false);
-                }}
-                placeholder="https://yourcompany.com"
-                className="h-7 text-xs flex-1"
-                data-testid="input-company-url"
-            />
-            <Button
-                size="sm"
-                variant={saved ? "secondary" : "default"}
-                onClick={handleSave}
-                disabled={!url.trim() || saveMutation.isPending || saved}
-                className="h-7 text-xs px-3"
-                data-testid="button-save-url"
-            >
-                {saved ? (
-                    <>
-                        <Check className="w-3 h-3 mr-1" />
-                        Saved
-                    </>
-                ) : saveMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                    "Save"
-                )}
-            </Button>
+        <div className="flex items-center px-3 py-1.5 border-b">
+            <div className="flex items-center gap-2" data-testid="company-url-section">
+                <LinkIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">Company website:</span>
+                <div className="relative">
+                    <Input
+                        type="url"
+                        value={url}
+                        onChange={(e) => handleChange(e.target.value)}
+                        onBlur={handleBlur}
+                        placeholder="https://yourcompany.com"
+                        className="h-7 text-xs w-52 pr-6"
+                        data-testid="input-company-url"
+                    />
+                    {saveMutation.isPending ? (
+                        <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-muted-foreground" />
+                    ) : saved && url ? (
+                        <Check className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-green-500" />
+                    ) : null}
+                </div>
+            </div>
         </div>
     );
 }

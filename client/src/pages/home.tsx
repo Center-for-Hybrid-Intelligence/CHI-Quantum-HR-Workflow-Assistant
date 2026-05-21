@@ -5,6 +5,7 @@ import { sessionId } from "@/lib/session";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,6 @@ import {
   Plus,
   Send,
   Trash2,
-  Bot,
   Loader2,
   Sparkles,
   ArrowRight,
@@ -38,6 +38,7 @@ import {
   BookOpen,
   UserRound,
   Lightbulb,
+  Globe,
 } from "lucide-react";
 import {
   Sheet,
@@ -94,32 +95,11 @@ interface WorkflowWithMessages extends Workflow {
 }
 
 import { StepIndicator, STEPS } from "@/components/home/StepIndicator";
-import { MarkdownContent } from "@/components/home/MarkdownContent";
 import { ChatMessage } from "@/components/home/ChatMessage";
 import { CanvasPopup } from "@/components/home/CanvasPopup";
 import { RoadmapPopup } from "@/components/home/RoadmapPopup";
 import { TutorialDialog } from "@/components/home/TutorialDialog";
-import { CompanyUrlInput } from "@/components/home/CompanyUrlInput";
 import { ModelSelector } from "@/components/home/ModelSelector";
-
-function EmptyState({ stepName }: { stepName: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
-      <div className="w-16 h-16 rounded-md bg-primary/10 flex items-center justify-center">
-        <Sparkles className="w-8 h-8 text-primary" />
-      </div>
-      <div className="space-y-2 max-w-md">
-        <h2 className="text-lg font-semibold" data-testid="text-empty-title">
-          {stepName}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Start the conversation below. The AI facilitator will guide you through this step
-          of the HI Business Model Innovation process.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function Home() {
   const { toast } = useToast();
@@ -128,6 +108,7 @@ export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isIntroStreaming, setIsIntroStreaming] = useState(false);
   const [isPretending, setIsPretending] = useState(false);
   const [introTriggeredFor, setIntroTriggeredFor] = useState<string | null>(null);
   const [showCanvas, setShowCanvas] = useState(false);
@@ -136,7 +117,8 @@ export default function Home() {
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [showNextStepWarning, setShowNextStepWarning] = useState(false);
   const [showPromptSheet, setShowPromptSheet] = useState(false);
-  // Open on first visit; localStorage key persists the "seen" flag across sessions.
+  const [newWorkflowMode, setNewWorkflowMode] = useState<"website" | "manual">("manual");
+  const [newWorkflowUrl, setNewWorkflowUrl] = useState("");
   const [showTutorial, setShowTutorial] = useState(
     () => localStorage.getItem("chi-hr-tutorial-seen") !== "1"
   );
@@ -147,14 +129,12 @@ export default function Home() {
   };
   const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
-  // True when the user has manually scrolled away from the bottom.
-  // We use a ref (not state) so that the scroll handler never triggers a re-render.
   const userScrolledUpRef = useRef(false);
-  // Snapshot of userScrolledUpRef taken the instant a stream finishes.
-  // The DOM shrinking when the streaming bubble is removed can fire a scroll
-  // event that falsely resets userScrolledUpRef before the committed messages
-  // arrive, so we capture the "real" value here and check it in the effect.
   const scrolledUpAtStreamEndRef = useRef(false);
+  const wasStreamingRef = useRef(false);
+  const fetchSuggestionsAfterStreamRef = useRef(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const { data: allWorkflows = [] } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
@@ -182,9 +162,6 @@ export default function Home() {
     }
   }, [workflowDetail?.currentStep, activeWorkflowId]);
 
-  // Attach a scroll listener to the Radix viewport so we can detect when the
-  // user scrolls away from the bottom.  Re-attached whenever the active workflow
-  // changes (which causes the ScrollArea to remount).
   useEffect(() => {
     const el = scrollRef.current?.querySelector<HTMLElement>(
       "[data-radix-scroll-area-viewport]"
@@ -193,7 +170,6 @@ export default function Home() {
 
     const onScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // Consider "at bottom" if within 60 px.
       userScrolledUpRef.current = distFromBottom > 60;
     };
 
@@ -206,17 +182,11 @@ export default function Home() {
       "[data-radix-scroll-area-viewport]"
     );
     if (!el) return;
-    // Skip auto-scroll if the user has scrolled up, unless forced.
     if (!opts.force && userScrolledUpRef.current) return;
     el.scrollTo({ top: el.scrollHeight, behavior: opts.smooth ? "smooth" : "instant" });
   }, []);
 
-  // Auto-scroll when new committed messages arrive (smooth) or while streaming
-  // (instant, to keep up with the incoming text).
   useEffect(() => {
-    // If the user was scrolled up when the stream ended, restore that flag
-    // (DOM shrink from removing the streaming bubble may have falsely reset it)
-    // and don't snap them down.
     if (scrolledUpAtStreamEndRef.current) {
       userScrolledUpRef.current = true;
       scrolledUpAtStreamEndRef.current = false;
@@ -229,8 +199,36 @@ export default function Home() {
     scrollToBottom({ smooth: false });
   }, [streamingContent, scrollToBottom]);
 
+  // Fetch AI suggestions after each non-intro stream completes
+  useEffect(() => {
+    const justFinished = wasStreamingRef.current && !isStreaming;
+    wasStreamingRef.current = isStreaming;
+    if (!justFinished || !activeWorkflowId || !fetchSuggestionsAfterStreamRef.current) return;
+    fetchSuggestionsAfterStreamRef.current = false;
+    setLoadingSuggestions(true);
+    fetch(`${base}/api/workflows/${activeWorkflowId}/suggestions`, {
+      headers: { "X-Session-ID": sessionId },
+    })
+      .then((r) => r.json())
+      .then((data) => setAiSuggestions(data.suggestions || []))
+      .catch(() => setAiSuggestions([]))
+      .finally(() => setLoadingSuggestions(false));
+  }, [isStreaming, activeWorkflowId]);
+
+  // Clear stale suggestions when switching workflow or step
+  useEffect(() => {
+    setAiSuggestions([]);
+    setLoadingSuggestions(false);
+  }, [activeWorkflowId, viewingStep]);
+
   const allMessages = workflowDetail?.messages || [];
   const visibleMessages = allMessages.filter((m) => m.step === viewingStep);
+
+  // Skip the first user message of each step — it's the auto-generated intro prompt, not a real user message
+  const displayMessages =
+    visibleMessages.length > 0 && visibleMessages[0].role === "user"
+      ? visibleMessages.slice(1)
+      : visibleMessages;
 
   const hasMessagesForStep = useCallback(
     (step: number) => allMessages.some((m) => m.step === step),
@@ -261,7 +259,7 @@ export default function Home() {
               return;
             }
           } catch {
-            // Response body is not JSON — treat as generic error
+            // not JSON
           }
           throw new Error("Request failed");
         }
@@ -301,9 +299,6 @@ export default function Home() {
               }
               if (event.done) {
                 receivedDone = true;
-                // Snapshot scroll position BEFORE the DOM shrinks (streaming
-                // bubble removal can fire a spurious scroll event that resets
-                // userScrolledUpRef to false).
                 scrolledUpAtStreamEndRef.current = userScrolledUpRef.current;
                 setIsStreaming(false);
                 setStreamingContent("");
@@ -319,7 +314,6 @@ export default function Home() {
           }
         }
 
-        // If the stream closed without a done event (e.g. server error), reset streaming state
         if (!receivedDone) {
           setIsStreaming(false);
           setStreamingContent("");
@@ -340,7 +334,10 @@ export default function Home() {
       const key = `${workflowId}-${step}`;
       if (introTriggeredFor === key) return;
       setIntroTriggeredFor(key);
+      fetchSuggestionsAfterStreamRef.current = false;
+      setIsIntroStreaming(true);
       await streamSSEResponse(`/api/workflows/${workflowId}/step-intro`, "POST");
+      setIsIntroStreaming(false);
     },
     [introTriggeredFor, streamSSEResponse]
   );
@@ -366,13 +363,17 @@ export default function Home() {
   }, [availableProviders]);
 
   const createWorkflow = useMutation({
-    mutationFn: async (selectedModel: string) => {
+    mutationFn: async ({ model, companyUrl }: { model: string; companyUrl: string }) => {
       const res = await apiRequest("POST", "/api/workflows", {
         title: `Workflow ${allWorkflows.length + 1}`,
         workflowName: "",
-        selectedModel,
+        selectedModel: model,
       });
-      return res.json();
+      const workflow = await res.json();
+      if (companyUrl) {
+        await apiRequest("PATCH", `/api/workflows/${workflow.id}/company-url`, { companyUrl });
+      }
+      return workflow;
     },
     onSuccess: (data: Workflow) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
@@ -381,6 +382,8 @@ export default function Home() {
       setIntroTriggeredFor(null);
       setShowCanvas(false);
       setShowNewWorkflowDialog(false);
+      setNewWorkflowUrl("");
+      setNewWorkflowMode("manual");
     },
     onError: (error: Error) => {
       toast({
@@ -426,7 +429,9 @@ export default function Home() {
       setInputValue("");
     }
 
-    // When the user actively sends a message, always snap to the bottom.
+    setAiSuggestions([]);
+    setLoadingSuggestions(false);
+    fetchSuggestionsAfterStreamRef.current = true;
     userScrolledUpRef.current = false;
     scrollToBottom({ force: true, smooth: true });
 
@@ -479,9 +484,6 @@ export default function Home() {
   const isViewingCurrentStep = viewingStep === currentStep;
   const canvasData = workflowDetail?.canvasData as CanvasData | null | undefined;
 
-  // The AI includes <!--NEXT_STEP_READY--> when it believes the current step is
-  // complete.  The marker is stripped from rendered output but kept in the stored
-  // message so the flag survives page refresh.
   const isNextStepReady = visibleMessages.some(
     (m) => m.role === "assistant" && m.content.includes("<!--NEXT_STEP_READY-->")
   );
@@ -496,9 +498,23 @@ export default function Home() {
     advanceStep.mutate({ id: activeWorkflowId, step });
   };
 
+  const isModelUnavailable = (() => {
+    if (!availableProviders) return false;
+    const selected = MODEL_OPTIONS.find((m) => m.id === newWorkflowModel);
+    return !!selected && !availableProviders[selected.provider as keyof typeof availableProviders];
+  })();
+
   return (
-    <div className="flex flex-col h-screen bg-background" data-testid="home-page">
-      <header className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b bg-background z-50 sticky top-0">
+    <div
+      className="flex flex-col h-screen relative overflow-hidden bg-gradient-to-br from-white via-slate-50/80 to-blue-50/40"
+      data-testid="home-page"
+    >
+      {/* Background blobs */}
+      <div aria-hidden className="pointer-events-none select-none absolute -top-48 -right-48 w-[700px] h-[700px] rounded-full bg-primary/[0.07] blur-3xl" />
+      <div aria-hidden className="pointer-events-none select-none absolute -bottom-48 -left-48 w-[600px] h-[600px] rounded-full bg-sky-400/[0.06] blur-3xl" />
+      <div aria-hidden className="pointer-events-none select-none absolute top-1/2 right-1/3 w-[500px] h-[400px] -translate-y-1/2 rounded-[50%] bg-violet-300/[0.05] blur-3xl" />
+
+      <header className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b bg-white/80 backdrop-blur-sm z-50 sticky top-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
@@ -527,7 +543,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex items-center gap-1 px-3 py-2 border-b bg-card/50 overflow-x-auto">
+      <div className="flex items-center gap-1 px-3 py-2 border-b bg-white/60 backdrop-blur-sm overflow-x-auto">
         {allWorkflows.map((w) => (
           <div key={w.id} className="flex items-center shrink-0">
             <button
@@ -537,8 +553,8 @@ export default function Home() {
               }}
               data-testid={`tab-workflow-${w.id}`}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${w.id === activeWorkflowId
-                ? "bg-background border border-border font-medium"
-                : "text-muted-foreground"
+                ? "bg-white border border-border font-medium shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
                 }`}
             >
               <MessageSquare className="w-3.5 h-3.5 shrink-0" />
@@ -576,7 +592,7 @@ export default function Home() {
       </div>
 
       {activeWorkflowId && (
-        <div className="border-b bg-card/30">
+        <div className="border-b bg-white/60 backdrop-blur-sm">
           <StepIndicator
             currentStep={currentStep}
             viewingStep={viewingStep}
@@ -586,34 +602,31 @@ export default function Home() {
         </div>
       )}
 
-      {activeWorkflowId && viewingStep === 1 && isViewingCurrentStep && currentStep === 1 && (
-        <CompanyUrlInput
-          workflowId={activeWorkflowId}
-          currentUrl={workflowDetail?.companyUrl || ""}
-        />
-      )}
-
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-h-0">
           {!activeWorkflowId ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 rounded-md bg-primary/10 flex items-center justify-center mx-auto">
-                  <Sparkles className="w-8 h-8 text-primary" />
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center space-y-6 max-w-md">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mx-auto shadow-sm">
+                  <Sparkles className="w-10 h-10 text-primary" />
                 </div>
-                <div className="space-y-2">
-                  <h2 className="text-lg font-semibold">Start Your First Workshop</h2>
-                  <p className="text-sm text-muted-foreground max-w-sm">
-                    Create a new workflow to begin the HI Business Model Innovation process.
+                <div className="space-y-3">
+                  <h2 className="text-2xl font-semibold">Welcome to your HR Workflow Assistant</h2>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Ready to find your next quantum hire? This tool will guide you step by step —
+                    from defining your need to a polished job post and execution plan, all backed by
+                    real market data.
                   </p>
                 </div>
                 <Button
+                  size="lg"
                   onClick={() => setShowNewWorkflowDialog(true)}
                   disabled={createWorkflow.isPending}
                   data-testid="button-create-first-workflow"
+                  className="gap-2"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Workflow
+                  <Plus className="w-5 h-5" />
+                  Start a New Workflow
                 </Button>
               </div>
             </div>
@@ -641,34 +654,46 @@ export default function Home() {
               )}
 
               <ScrollArea className="flex-1" ref={scrollRef}>
-                <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
+                <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
                   {loadingDetail ? (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                     </div>
-                  ) : visibleMessages.length === 0 && !streamingContent ? (
-                    isViewingCurrentStep ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                        <span className="ml-3 text-sm text-muted-foreground">
-                          Starting Step {viewingStep}...
-                        </span>
+                  ) : isIntroStreaming || (!hasMessagesForStep(viewingStep) && isViewingCurrentStep && !isStreaming) ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      <span className="ml-3 text-sm text-muted-foreground">
+                        Starting Step {viewingStep}...
+                      </span>
+                    </div>
+                  ) : displayMessages.length === 0 && !streamingContent ? (
+                    isViewingCurrentStep ? null : (
+                      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center py-12">
+                        <div className="w-16 h-16 rounded-md bg-primary/10 flex items-center justify-center">
+                          <Sparkles className="w-8 h-8 text-primary" />
+                        </div>
+                        <div className="space-y-2 max-w-md">
+                          <h2 className="text-lg font-semibold" data-testid="text-empty-title">
+                            {viewingStepName}
+                          </h2>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            No messages for this step yet.
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      <EmptyState stepName={viewingStepName} />
                     )
                   ) : (
                     <>
-                      {visibleMessages.map((msg) => (
+                      {displayMessages.map((msg) => (
                         <ChatMessage key={msg.id} message={msg} />
                       ))}
-                      {streamingContent && isViewingCurrentStep && (
+                      {streamingContent && isViewingCurrentStep && !isIntroStreaming && (
                         <ChatMessage
                           message={{ role: "assistant", content: streamingContent }}
                           isStreaming={true}
                         />
                       )}
-                      {viewingStep === 5 && !isStreaming && visibleMessages.length > 0 && (
+                      {viewingStep === 5 && !isStreaming && displayMessages.length > 0 && (
                         <div className="flex items-center justify-center gap-3 py-4 mt-2" data-testid="popup-buttons">
                           {canvasData && (
                             <Button
@@ -697,80 +722,39 @@ export default function Home() {
                 </div>
               </ScrollArea>
 
-              <div className="border-t bg-background px-3 sm:px-4 py-3">
-                <div className="max-w-3xl mx-auto space-y-2">
-                  {isViewingCurrentStep && currentStep <= 5 && visibleMessages.length > 0 && !isStreaming && (
-                    <div className="space-y-2">
-                      {/* Desktop: chips + next step on one row */}
-                      <div className="hidden sm:flex items-center gap-2">
-                        <div className="flex gap-1.5 flex-1 flex-wrap">
-                          {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
-                            <Button
-                              key={idx}
-                              variant="outline"
-                              size="sm"
-                              className="text-[10px] h-6 px-2.5 py-0 rounded-full bg-primary/5 hover:bg-primary/20 border-primary/20 text-primary transition-colors shrink-0"
-                              onClick={() => sendMessage(prompt)}
-                            >
-                              <Bot className="w-3 h-3 mr-1" />
-                              {prompt}
-                            </Button>
-                          ))}
-                        </div>
-                        {currentStep < 5 && (
-                          <Button
-                            variant={isNextStepReady ? "default" : "outline"}
-                            size="default"
-                            className={`shrink-0 ${isNextStepReady
-                              ? "font-semibold shadow-md animate-pulse hover:animate-none"
-                              : "text-muted-foreground"}`}
-                            onClick={() => {
-                              if (isNextStepReady) {
-                                handleAdvanceStep(currentStep + 1);
-                              } else {
-                                setShowNextStepWarning(true);
-                              }
-                            }}
-                            data-testid="button-next-step"
-                          >
-                            Next: {STEPS[currentStep]?.name}
-                            <ArrowRight className="w-4 h-4 ml-1.5" />
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Mobile: suggestions button + next step on one row */}
-                      <div className="flex sm:hidden gap-2">
+              <div className="border-t bg-white/80 backdrop-blur-sm px-3 sm:px-4 py-3">
+                <div className="max-w-4xl mx-auto space-y-2">
+{isViewingCurrentStep && currentStep <= 5 && visibleMessages.length > 0 && !isStreaming && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs text-primary border-primary/20 bg-primary/5 hover:bg-primary/10"
+                        onClick={() => setShowPromptSheet(true)}
+                      >
+                        <Lightbulb className="w-3.5 h-3.5" />
+                        Suggestions
+                      </Button>
+                      {currentStep < 5 && (
                         <Button
-                          variant="outline"
+                          variant={isNextStepReady ? "default" : "outline"}
                           size="sm"
-                          className="flex-1 gap-1.5 text-xs text-primary border-primary/20 bg-primary/5"
-                          onClick={() => setShowPromptSheet(true)}
+                          className={`ml-auto shrink-0 ${isNextStepReady
+                            ? "font-semibold shadow-md animate-pulse hover:animate-none"
+                            : "text-muted-foreground"}`}
+                          onClick={() => {
+                            if (isNextStepReady) {
+                              handleAdvanceStep(currentStep + 1);
+                            } else {
+                              setShowNextStepWarning(true);
+                            }
+                          }}
+                          data-testid="button-next-step"
                         >
-                          <Lightbulb className="w-3.5 h-3.5" />
-                          Suggestions
+                          Next: {STEPS[currentStep]?.name}
+                          <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
-                        {currentStep < 5 && (
-                          <Button
-                            variant={isNextStepReady ? "default" : "outline"}
-                            size="sm"
-                            className={`flex-1 gap-1.5 ${isNextStepReady
-                              ? "font-semibold shadow-md animate-pulse hover:animate-none"
-                              : "text-muted-foreground"}`}
-                            onClick={() => {
-                              if (isNextStepReady) {
-                                handleAdvanceStep(currentStep + 1);
-                              } else {
-                                setShowNextStepWarning(true);
-                              }
-                            }}
-                            data-testid="button-next-step-mobile"
-                          >
-                            Next Step
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
+                      )}
                     </div>
                   )}
                   {isViewingCurrentStep ? (
@@ -780,7 +764,7 @@ export default function Home() {
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Type your message..."
-                        className="resize-none min-h-[44px] max-h-[160px] text-sm flex-1"
+                        className="resize-none min-h-[44px] max-h-[160px] text-sm flex-1 bg-white/70"
                         rows={1}
                         disabled={isStreaming}
                         data-testid="input-message"
@@ -830,7 +814,6 @@ export default function Home() {
             </>
           )}
         </div>
-
       </div>
 
       {canvasData && (
@@ -842,37 +825,60 @@ export default function Home() {
 
       <TutorialDialog open={showTutorial} onOpenChange={handleTutorialOpenChange} />
 
+      {/* Suggestions panel */}
       <Sheet open={showPromptSheet} onOpenChange={setShowPromptSheet}>
         <SheetContent side="bottom" className="px-4 pb-8 pt-5">
           <SheetHeader className="mb-4">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Lightbulb className="w-4 h-4 text-primary" />
-              Suggestions
+              Suggestions for Step {currentStep}
             </SheetTitle>
           </SheetHeader>
-          <div className="flex flex-col gap-2">
-            {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                className="w-full justify-start gap-3 h-auto py-3 text-sm"
-                onClick={() => {
-                  sendMessage(prompt);
-                  setShowPromptSheet(false);
-                }}
-              >
-                <Bot className="w-4 h-4 shrink-0 text-primary" />
-                {prompt}
-              </Button>
-            ))}
+          <div className="max-w-4xl mx-auto grid grid-cols-2 gap-3">
+            {/* Left column — static step prompts */}
+            <div className="flex flex-col gap-2">
+              {STEP_PROMPTS[currentStep]?.map((prompt, idx) => (
+                <Button
+                  key={idx}
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-3 text-sm"
+                  onClick={() => {
+                    sendMessage(prompt);
+                    setShowPromptSheet(false);
+                  }}
+                >
+                  <Sparkles className="w-4 h-4 shrink-0 text-primary" />
+                  {prompt}
+                </Button>
+              ))}
+            </div>
+
+            {/* Right column — AI-generated contextual prompts */}
+            <div className="flex flex-col gap-2">
+              {loadingSuggestions ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="h-[46px] rounded-md bg-amber-100/60 animate-pulse" />
+                ))
+              ) : aiSuggestions.map((prompt, idx) => (
+                <Button
+                  key={idx}
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-3 text-sm bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800"
+                  onClick={() => {
+                    sendMessage(prompt);
+                    setShowPromptSheet(false);
+                  }}
+                >
+                  <Sparkles className="w-4 h-4 shrink-0 text-amber-500" />
+                  {prompt}
+                </Button>
+              ))}
+            </div>
           </div>
         </SheetContent>
       </Sheet>
 
-      <AlertDialog
-        open={showNextStepWarning}
-        onOpenChange={setShowNextStepWarning}
-      >
+      <AlertDialog open={showNextStepWarning} onOpenChange={setShowNextStepWarning}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Not all information provided yet</AlertDialogTitle>
@@ -922,12 +928,79 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={showNewWorkflowDialog} onOpenChange={setShowNewWorkflowDialog}>
-        <DialogContent className="sm:max-w-sm">
+      {/* New Workflow Dialog */}
+      <Dialog
+        open={showNewWorkflowDialog}
+        onOpenChange={(open) => {
+          setShowNewWorkflowDialog(open);
+          if (!open) {
+            setNewWorkflowMode("manual");
+            setNewWorkflowUrl("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Workflow</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-5 pt-2">
+
+            {/* Mode selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">How would you like to start?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewWorkflowMode("website")}
+                  className={`flex flex-col gap-2 p-3 rounded-lg border-2 text-left transition-colors ${
+                    newWorkflowMode === "website"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <Globe className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">From my website</p>
+                    <p className="text-xs text-muted-foreground leading-snug">AI reads your company page for context</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewWorkflowMode("manual")}
+                  className={`flex flex-col gap-2 p-3 rounded-lg border-2 text-left transition-colors ${
+                    newWorkflowMode === "manual"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <MessageSquare className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Start manually</p>
+                    <p className="text-xs text-muted-foreground leading-snug">I'll share details in the chat</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Website URL (shown when website mode is selected) */}
+            {newWorkflowMode === "website" && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Company website URL</label>
+                <Input
+                  type="url"
+                  value={newWorkflowUrl}
+                  onChange={(e) => setNewWorkflowUrl(e.target.value)}
+                  placeholder="https://yourcompany.com"
+                  className="text-sm"
+                  autoFocus
+                />
+                <p className="text-xs text-muted-foreground">
+                  The AI will fetch your page and use it as context throughout the workflow.
+                </p>
+              </div>
+            )}
+
+            {/* Model selector */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">AI Model</label>
               <Select value={newWorkflowModel} onValueChange={setNewWorkflowModel}>
@@ -952,27 +1025,27 @@ export default function Home() {
                   })}
                 </SelectContent>
               </Select>
-              {availableProviders && (() => {
-                const selected = MODEL_OPTIONS.find((m) => m.id === newWorkflowModel);
-                const unavailable = selected && !availableProviders[selected.provider as keyof typeof availableProviders];
-                return unavailable ? (
-                  <p className="text-xs text-destructive">
-                    No API key configured for {selected.provider}. Add one to your environment to use this model.
-                  </p>
-                ) : null;
-              })()}
+              {isModelUnavailable && (
+                <p className="text-xs text-destructive">
+                  No API key configured for this model's provider.
+                </p>
+              )}
             </div>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowNewWorkflowDialog(false)}>
                 Cancel
               </Button>
               <Button
-                onClick={() => createWorkflow.mutate(newWorkflowModel)}
-                disabled={createWorkflow.isPending || (() => {
-                  if (!availableProviders) return false;
-                  const selected = MODEL_OPTIONS.find((m) => m.id === newWorkflowModel);
-                  return !!selected && !availableProviders[selected.provider as keyof typeof availableProviders];
-                })()}
+                onClick={() => createWorkflow.mutate({
+                  model: newWorkflowModel,
+                  companyUrl: newWorkflowMode === "website" ? newWorkflowUrl.trim() : "",
+                })}
+                disabled={
+                  createWorkflow.isPending ||
+                  isModelUnavailable ||
+                  (newWorkflowMode === "website" && !newWorkflowUrl.trim())
+                }
                 data-testid="button-confirm-new-workflow"
               >
                 {createWorkflow.isPending ? (

@@ -10,6 +10,20 @@ const httpServer = createServer(app);
 // Trust Caddy (one proxy hop) so req.ip reflects the real client IP
 app.set("trust proxy", 1);
 
+// When deployed under a sub-path (e.g. /quantum-workflow-assistant), the
+// client prepends that prefix to all API URLs. Strip it here so every route
+// handler sees the canonical /api/... paths regardless of how the app is
+// accessed (directly or through a reverse proxy that keeps the prefix).
+const _basePath = (process.env.VITE_BASE_PATH || "").replace(/\/$/, "");
+if (_basePath) {
+  app.use((req, _res, next) => {
+    if (req.url.startsWith(_basePath + "/")) {
+      req.url = req.url.slice(_basePath.length);
+    }
+    next();
+  });
+}
+
 // Rate limit all API routes: 120 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,

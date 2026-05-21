@@ -545,6 +545,41 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/workflows/:id/suggestions", requireSession, async (req, res) => {
+    try {
+      const workflowId = parseInt(req.params["id"] as string);
+      const workflow = await getOwnedWorkflow(workflowId, req.sessionId, res);
+      if (!workflow) return;
+
+      const allMessages = await storage.getMessagesByWorkflow(workflowId);
+      const stepMessages = allMessages.filter((m) => m.step === workflow.currentStep);
+      // Skip the auto-generated intro prompt (first user message of the step)
+      const conversation = stepMessages.length > 0 && stepMessages[0].role === "user"
+        ? stepMessages.slice(1)
+        : stepMessages;
+
+      if (conversation.length === 0) return res.json({ suggestions: [] });
+
+      const recent = conversation.slice(-6);
+      const chatHistory: { role: "system" | "user" | "assistant"; content: string }[] = [
+        {
+          role: "system",
+          content: `You suggest short follow-up prompts for an HR professional using a quantum computing HR workflow assistant (Step ${workflow.currentStep} of 5). Return ONLY a raw JSON array of exactly 3 strings. Each string must be under 8 words. No markdown, no keys, no explanation — just the JSON array.`,
+        },
+        ...recent.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user", content: "Give 3 short follow-up prompts the user might send next." },
+      ];
+
+      const raw = await generateMessage("claude-haiku-4-5-20251001", chatHistory);
+      const match = raw.match(/\[[\s\S]*?\]/);
+      const parsed = match ? JSON.parse(match[0]) : [];
+      res.json({ suggestions: Array.isArray(parsed) ? parsed.slice(0, 4).map(String) : [] });
+    } catch (error) {
+      console.error("Error generating suggestions:", error);
+      res.json({ suggestions: [] });
+    }
+  });
+
   app.delete("/api/workflows/:id", requireSession, async (req, res) => {
     try {
       const id = parseInt(req.params["id"] as string);

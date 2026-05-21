@@ -10,6 +10,14 @@ export function serveStatic(app: Express) {
     );
   }
 
+  const basePath = (process.env.VITE_BASE_PATH || "").replace(/\/$/, "");
+
+  // When deployed under a sub-path (e.g. /quantum-workflow-assistant), Vite
+  // bakes that prefix into all asset URLs. We must mount the static middleware
+  // at that same prefix so the browser can load them.
+  if (basePath) {
+    app.use(basePath, express.static(distPath));
+  }
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist

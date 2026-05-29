@@ -127,6 +127,8 @@ export default function Home() {
     if (!open) localStorage.setItem("chi-hr-tutorial-seen", "1");
     setShowTutorial(open);
   };
+
+
   const [newWorkflowModel, setNewWorkflowModel] = useState<string>("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);

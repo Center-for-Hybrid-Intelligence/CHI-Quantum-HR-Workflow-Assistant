@@ -6,7 +6,6 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue,
 } from "@/components/ui/select";
 import { MODEL_OPTIONS } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -76,7 +75,9 @@ export function ModelSelector({
                 className="w-[120px] sm:w-[180px] text-xs"
                 data-testid="select-model"
             >
-                <SelectValue placeholder="Select model" />
+                <span className="truncate">
+                    {MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Select model"}
+                </span>
             </SelectTrigger>
             <SelectContent>
                 {MODEL_OPTIONS.map((m) => {

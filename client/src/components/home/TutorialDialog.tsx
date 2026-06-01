@@ -33,14 +33,22 @@ export function TutorialDialog({ open, onOpenChange }: TutorialDialogProps) {
             <h3 className="font-semibold mb-2">Getting Started</h3>
             <ul className="space-y-1.5 text-muted-foreground list-disc list-inside">
               <li>
-                <strong>Create a workflow</strong> — Click <strong>+</strong> in the tab bar. You can start
-                from your company website (the AI reads your page for context) or jump straight into the chat.
+                <strong>Create a workflow</strong> — Click <strong>+</strong> in the tab bar.
                 Up to 10 workflows can run in parallel.
               </li>
               <li>
-                <strong>Choose a model</strong> — Use the dropdown in the header:{" "}
-                <em>Claude Sonnet 4.6</em> for the best output quality, or <em>Claude Haiku 4.5</em> if
-                you prefer faster, lighter responses.
+                <strong>Company website</strong> <em>(optional)</em> — When creating a workflow, paste
+                your company URL. The AI reads the page and uses your company's culture, tone, and context
+                throughout the full workflow — no need to explain your organisation from scratch.
+              </li>
+              <li>
+                <strong>Delete a workflow</strong> — Click the <strong>trash icon</strong> on the workflow
+                tab. You'll be asked to confirm; deletion is permanent and removes all messages.
+              </li>
+              <li>
+                <strong>Choose a model</strong> — Select one when creating the workflow, or swap at any
+                time using the dropdown in the header. <em>Claude Sonnet 4.6</em> gives the best output
+                quality; <em>Claude Haiku 4.5</em> is faster and lighter.
               </li>
               <li>
                 <strong>Take your time.</strong> Each step builds on the last. You can always go back and
@@ -111,8 +119,10 @@ export function TutorialDialog({ open, onOpenChange }: TutorialDialogProps) {
                 complete. You can still proceed early — a confirmation prompt will appear to let you decide.
               </li>
               <li>
-                <strong>Suggestions</strong> — The Suggestions button above the chat input opens a panel
-                with context-aware prompts for the current step. Great when you're not sure what to ask next.
+                <strong>Suggestions</strong> — The Suggestions button above the chat input opens a
+                two-column panel. The left column has static step-specific prompts (always available);
+                the right column shows AI-generated suggestions tailored to your current conversation,
+                refreshed after each AI response. Click any prompt to send it instantly.
               </li>
             </ul>
           </section>

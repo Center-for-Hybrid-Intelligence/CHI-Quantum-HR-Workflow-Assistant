@@ -72,7 +72,7 @@ const STEP_PROMPTS: Record<number, string[]> = {
   ],
   3: [
     "Write the full draft",
-    "More inclusive language",
+    "What info do you still need?",
     "Strengthen the benefits",
     "Startup tone",
   ],
